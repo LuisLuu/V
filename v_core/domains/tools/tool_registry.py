@@ -1,7 +1,5 @@
-# v_core/domains/tools/tool_registry.py
 from typing import Dict, Any, List
 
-# Importing all of V's physical and digital tools
 from v_core.domains.tools.filesystem.directory_scanner import DirectoryScanner
 from v_core.domains.tools.filesystem.file_reader import FileReader
 from v_core.domains.tools.iots.bambu_controller import BambuController
@@ -15,7 +13,6 @@ class ToolRegistry:
     Loads tools into memory and routes execution requests from the Orchestrator.
     """
     def __init__(self):
-        # Instantiate tools once to keep latency at absolute zero
         self.tools = {
             "directory_scanner": DirectoryScanner(),
             "file_reader": FileReader(),

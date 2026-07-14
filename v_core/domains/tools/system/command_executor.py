@@ -1,3 +1,4 @@
+# v_core/domains/tools/system/command_executor.py
 import subprocess
 import os
 from v_core.domains.tools.preconditions import BaseTool, SecurityTier
@@ -76,6 +77,7 @@ class CommandExecutor(BaseTool):
             # Protect the context window from massive terminal dumps
             max_chars = 4000
             if len(output) > max_chars:
+
                 output = f"...[SYSTEM WARNING: Output truncated. Showing final {max_chars} chars]...\n" + output[-max_chars:]
             
             if result.returncode == 0:
