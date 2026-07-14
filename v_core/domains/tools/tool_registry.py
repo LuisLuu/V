@@ -1,38 +1,48 @@
-from typing import Dict, Type, Any
-from .preconditions import BaseTool
+# v_core/domains/tools/tool_registry.py
+from typing import Dict, Any, List
+
+# Importing all of V's physical and digital tools
+from v_core.domains.tools.filesystem.directory_scanner import DirectoryScanner
+from v_core.domains.tools.filesystem.file_reader import FileReader
+from v_core.domains.tools.iots.bambu_controller import BambuController
+from v_core.domains.tools.system.command_executor import CommandExecutor
+from v_core.domains.tools.web.web_scraper import WebScraper
+from v_core.domains.tools.p_apis.rest_caller import RESTCaller
 
 class ToolRegistry:
+    """
+    The central switchboard for V's capabilities.
+    Loads tools into memory and routes execution requests from the Orchestrator.
+    """
     def __init__(self):
-        # A dictionary mapping tool names to their actual class instances
-        self._tools: Dict[str, BaseTool] = {}
+        # Instantiate tools once to keep latency at absolute zero
+        self.tools = {
+            "directory_scanner": DirectoryScanner(),
+            "file_reader": FileReader(),
+            "bambu_controller": BambuController(),
+            "command_executor": CommandExecutor(),
+            "web_scraper": WebScraper(),
+            "rest_caller": RESTCaller()
+        }
 
-    def register(self, tool: BaseTool):
-        """Adds a tool to the internal bins."""
-        self._tools[tool.name] = tool
+    def get_all_schemas(self) -> List[dict]:
+        """
+        Pulls the structured JSON schemas from all registered tools.
+        Injected into V's system prompt so she knows her exact capabilities.
+        """
+        return [tool.get_schema() for tool in self.tools.values()]
 
-    def get_lightweight_index(self) -> str:
+    def execute_tool(self, tool_name: str, **kwargs) -> Any:
         """
-        PROGRESSIVE DISCLOSURE: Phase 1
-        This is the ONLY thing V sees in her default system prompt.
-        It costs barely any tokens.
+        The execution router. Takes the tool name and raw arguments,
+        finds the script, and fires it.
         """
-        if not self._tools:
-            return "No tools available."
+        if tool_name not in self.tools:
+            return f"SYSTEM_ERROR: The tool '{tool_name}' does not exist in the registry."
+            
+        tool = self.tools[tool_name]
         
-        index = "Available Tools (Call by name to get full schema):\n"
-        for name, tool in self._tools.items():
-            index += f"- {name}: {tool.description}\n"
-        return index
-
-    def get_tool_schema(self, tool_name: str) -> dict:
-        """
-        PROGRESSIVE DISCLOSURE: Phase 2
-        V only receives this massive JSON schema WHEN she decides to use the tool.
-        """
-        tool = self._tools.get(tool_name)
-        if not tool:
-            raise ValueError(f"Tool {tool_name} does not exist.")
-        
-        # In a real implementation, this would return the Pydantic schema 
-        # or detailed JSON required to format the arguments correctly.
-        return tool.get_schema()
+        try:
+            return tool.execute(**kwargs)
+        except Exception as e:
+             return f"SYSTEM_ERROR: Tool {tool_name} crashed during execution: {str(e)}"

@@ -1,109 +1,132 @@
 # v_core/domains/orchestration/state_machine.py
-from enum import Enum
-from v_core.domains.tools.preconditions import SecurityTier
-import httpx
 import json
+import re
+import uuid
+from v_core.domains.tools.tool_registry import ToolRegistry
+from v_core.domains.harness.blast_gates import BlastGate
+from typing import Optional
 
 class Orchestrator:
     """
-    The main execution loop. It manages memory sensors, triggers compaction, 
-    evaluates tool preconditions, and enforces blast gates.
+    The central ReAct engine. Hardened with JSON structural enforcement, 
+    memory compression, and HITL state caching.
     """
-    def __init__(self, ram_window, compaction_engine, tool_registry):
-        self.ram = ram_window
-        self.compaction = compaction_engine
-        self.tools = tool_registry
-
-    # ---------------------------------------------------------
-    # METHOD 1: The LLM Bridge (Independent Class Method)
-    # ---------------------------------------------------------
-    async def _call_qwen_llm(self, context: list) -> dict:
-        """
-        The actual execution bridge to local Ollama.
-        Forces strict JSON output to guarantee structural integrity for the state machine.
-        """
-        ollama_url = "http://localhost:11434/api/chat"
+    def __init__(self, llm_interface):
+        self.llm = llm_interface
+        self.registry = ToolRegistry()
+        self.gate = BlastGate()
+        self.max_loops = 5 
+        self.tool_schemas = json.dumps(self.registry.get_all_schemas(), indent=2)
         
-        payload = {
-            "model": "qwen2.5",
-            "messages": context,
-            "stream": False,
-            "format": "json"  # Enforces deterministic JSON parsing
-        }
+        # FIX 3: The State Cache. Holds the active memory context during security pauses.
+        self.active_sessions = {}
+        
+        # FIX 2: Memory constraint threshold (characters)
+        self.max_memory_chars = 6000
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+    def _build_system_prompt(self) -> str:
+        """
+        FIX 1: We abandon regex and force the LLM to output pure, parseable JSON.
+        """
+        return f"""You are V, an autonomous AI agent.
+AVAILABLE TOOLS:
+{self.tool_schemas}
+
+You MUST respond with a single valid JSON object. Do not include markdown formatting, backticks, or conversational text outside the JSON.
+Format:
+{{
+  "Thought": "Your step-by-step reasoning",
+  "Action": "Exact tool name, or 'None' if finished",
+  "Action_Input": {{ "arg": "value" }},
+  "Final_Answer": "Your response to the user (only populate if Action is 'None')"
+}}
+"""
+
+    def _compress_memory(self, memory_context: str) -> str:
+        """
+        FIX 2: The Sliding Window. Prevents the context avalanche by slicing out the middle 
+        of the memory string if it gets too large, preserving the system prompt and recent observations.
+        """
+        if len(memory_context) > self.max_memory_chars:
+            head_cut = 2000
+            tail_cut = 3500
+            return memory_context[:head_cut] + "\n...[SYSTEM LOG: OLD MEMORY COMPRESSED]...\n" + memory_context[-tail_cut:]
+        return memory_context
+
+    def execute_react_loop(self, user_query: Optional[str] = None, session_id: Optional[str] = None, user_auth: Optional[str] = None) -> str:
+        """
+        The main execution loop. Can be initialized fresh or resumed from a HITL pause.
+        """
+        # FIX 3: State Resumption
+        if session_id and session_id in self.active_sessions and user_auth:
+            session = self.active_sessions[session_id]
+            if user_auth.strip().upper() in ["Y", "YES", "GO AHEAD"]:
+                # User approved. Execute the paused physical action.
+                observation = self.registry.execute_tool(session["tool_name"], **session["action_args"])
+                memory_context = session["memory_context"] + f"\nObservation: {observation}\n"
+                iteration_start = session["iteration"] + 1
+            else:
+                # User denied.
+                memory_context = session["memory_context"] + "\nObservation: SYSTEM_ERROR: User explicitly denied execution.\n"
+                iteration_start = session["iteration"] + 1
+            
+            # Flush the cache
+            del self.active_sessions[session_id]
+        else:
+            # Fresh execution
+            session_id = str(uuid.uuid4())
+            memory_context = self._build_system_prompt() + f"\nUser Query: {user_query}\n"
+            iteration_start = 0
+
+        for iteration in range(iteration_start, self.max_loops):
+            # Apply memory compression before feeding to the LLM
+            memory_context = self._compress_memory(memory_context)
+            
+            # The Brain executes
+            response_text = self.llm.generate(memory_context)
+            memory_context += f"\nV: {response_text}\n"
+            
+            # FIX 1: Robust JSON Parsing
             try:
-                response = await client.post(ollama_url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                
-                # Extract the message content generated by Qwen
-                content_str = data.get("message", {}).get("content", "{}")
-                parsed_content = json.loads(content_str)
-                
-                return {
-                    "text": parsed_content.get("text", ""),
-                    "tool_call": parsed_content.get("tool_call", None)
-                }
-                
-            except httpx.RequestError as e:
-                return {"text": f"SYSTEM_ERROR: Connection to Ollama failed. {str(e)}", "tool_call": None}
+                # Strip potential markdown code blocks the LLM might hallucinate
+                clean_text = re.sub(r'```json|```', '', response_text).strip()
+                parsed = json.loads(clean_text)
             except json.JSONDecodeError:
-                return {"text": "SYSTEM_ERROR: Model hallucinated invalid JSON.", "tool_call": None}
+                observation = "SYSTEM_ERROR: Output must be strictly valid JSON."
+                memory_context += f"Observation: {observation}\n"
+                continue
+                
+            # Check for termination
+            if parsed.get("Final_Answer"):
+                return parsed["Final_Answer"]
+                
+            tool_name = parsed.get("Action")
+            action_args = parsed.get("Action_Input", {})
+            
+            # Execute tool logic
+            if not tool_name or tool_name == "None":
+                 observation = "SYSTEM_ERROR: No action specified but no Final_Answer provided."
+            elif tool_name not in self.registry.tools:
+                 observation = f"SYSTEM_ERROR: Tool '{tool_name}' not found."
+            else:
+                 tool_instance = self.registry.tools[tool_name]
+                 gate_check = self.gate.evaluate_execution(tool_name, tool_instance.security_tier, action_args)
+                 
+                 if not gate_check["approved"]:
+                     if gate_check.get("reason") == "HITL_REQUIRED":
+                         # FIX 3: Cache the exact state before freezing
+                         self.active_sessions[session_id] = {
+                             "memory_context": memory_context,
+                             "tool_name": tool_name,
+                             "action_args": action_args,
+                             "iteration": iteration
+                         }
+                         return f"SESSION:{session_id}|PAUSED_FOR_USER_AUTHORIZATION:\n{gate_check['ui_prompt']}"
+                     else:
+                         observation = f"SYSTEM_ERROR: Execution blocked. {gate_check['reason']}"
+                 else:
+                     observation = self.registry.execute_tool(tool_name, **action_args)
+            
+            memory_context += f"Observation: {observation}\n"
 
-    # ---------------------------------------------------------
-    # METHOD 2: The Core Loop (Now Async)
-    # ---------------------------------------------------------
-    async def run_task(self, user_input: str) -> str:
-        # Put the new task on the active workbench
-        self.ram.append_node("user", user_input, status="active")
-        
-        max_iterations = 5
-        current_loop = 0
-        
-        while current_loop < max_iterations:
-            # 1. The Memory Sensor Check
-            if self.ram.is_critical():
-                # The desk is cluttered. Pause and sweep.
-                condensed_state = self.compaction.compact_context(self.ram.active_messages)
-                self.ram.clear_compacted_nodes(condensed_state)
-            
-            # 2. Reason (The LLM Call)
-            # We AWAIT the method here instead of defining it here
-            action_plan = await self._call_qwen_llm(self.ram.get_working_context())
-            
-            # 3. Route the Action
-            if not action_plan.get("tool_call"):
-                # No tools needed. Task is done or it's a regular chat response.
-                self.ram.append_node("assistant", action_plan["text"], status="active")
-                return action_plan["text"]
-                
-            tool_name = action_plan["tool_call"]["name"]
-            tool_args = action_plan["tool_call"]["args"]
-            tool_instance = self.tools.get_tool(tool_name)
-            
-            # 4. The Blast Gate (Human-in-the-Loop)
-            if tool_instance.security_tier == SecurityTier.DESTRUCTIVE:
-                # HARD STOP. Pause the loop and alert the FastAPI transport layer.
-                return f"SYSTEM_HALT: Tool '{tool_name}' requires human approval."
-                
-            # 5. Computational Sensors (The Feedback Loop)
-            if not tool_instance.verify_preconditions():
-                # Catch the error and shove it back into RAM so V can self-correct
-                error_msg = f"Observation: Preconditions failed for {tool_name}. Check paths/auth."
-                self.ram.append_node("system", error_msg, status="ephemeral")
-                current_loop += 1
-                continue 
-                
-            # 6. Act & Observe
-            try:
-                result = tool_instance.execute(**tool_args)
-                # Success! Tag as completed so the Compaction Engine can file it to ROM later
-                self.ram.append_node("system", f"Tool Result: {result}", status="completed")
-            except Exception as e:
-                # Catch actual execution crashes
-                self.ram.append_node("system", f"Tool Error: {str(e)}", status="ephemeral")
-                
-            current_loop += 1
-            
-        return "Task failed: Exceeded maximum reasoning loops. Compounding error prevented."
+        return "SYSTEM_ERROR: Max reasoning loops exceeded without reaching a final answer. Execution halted."
