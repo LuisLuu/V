@@ -25,20 +25,18 @@ class Orchestrator:
         self.max_memory_chars = 6000
 
     def _build_system_prompt(self) -> str:
-        """
-        FIX 1: We abandon regex and force the LLM to output pure, parseable JSON.
-        """
+        # We clarify the prompt to prevent literal copying and force string outputs
         return f"""You are V, an autonomous AI agent.
 AVAILABLE TOOLS:
 {self.tool_schemas}
 
-You MUST respond with a single valid JSON object. Do not include markdown formatting, backticks, or conversational text outside the JSON.
+You MUST respond with a single valid JSON object. Do not include markdown formatting.
 Format:
 {{
   "Thought": "Your step-by-step reasoning",
   "Action": "Exact tool name, or 'None' if finished",
-  "Action_Input": {{ "arg": "value" }},
-  "Final_Answer": "Your response to the user (only populate if Action is 'None')"
+  "Action_Input": {{ "exact_parameter_name": "value" }}, 
+  "Final_Answer": "Your response to the user AS A PLAIN STRING (only populate if Action is 'None')"
 }}
 """
 
@@ -86,6 +84,7 @@ Format:
             response_text = self.llm.generate(memory_context)
             memory_context += f"\nV: {response_text}\n"
             
+            print(f"\n[DEBUG] V's Raw Output (Loop {iteration}):\n{response_text}")
             # FIX 1: Robust JSON Parsing
             try:
                 # Strip potential markdown code blocks the LLM might hallucinate
@@ -94,11 +93,16 @@ Format:
             except json.JSONDecodeError:
                 observation = "SYSTEM_ERROR: Output must be strictly valid JSON."
                 memory_context += f"Observation: {observation}\n"
+
+                print(f"[DEBUG] System Feed:\n{observation}")
+
                 continue
                 
             # Check for termination
             if parsed.get("Final_Answer"):
-                return parsed["Final_Answer"]
+                final_ans = parsed["Final_Answer"]
+                # Forcing the output to be a string so .startswith() never crashes
+                return final_ans if isinstance(final_ans, str) else json.dumps(final_ans)
                 
             tool_name = parsed.get("Action")
             action_args = parsed.get("Action_Input", {})
@@ -127,6 +131,7 @@ Format:
                  else:
                      observation = self.registry.execute_tool(tool_name, **action_args)
             
+            print(f"[DEBUG] Tool Observation:\n{observation}")
             memory_context += f"Observation: {observation}\n"
 
         return "SYSTEM_ERROR: Max reasoning loops exceeded without reaching a final answer. Execution halted."

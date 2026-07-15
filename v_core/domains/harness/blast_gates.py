@@ -1,10 +1,6 @@
 # v_core/domains/harness/blast_gates.py
 import logging
-
-class SecurityTier:
-    """Defines the threat level of a tool execution."""
-    READ = "read"   # Safe: Scanning directories, reading files, scraping web pages.
-    WRITE = "write" # Dangerous: Sending API payloads, executing terminal commands, controlling IoT.
+from v_core.domains.tools.preconditions import SecurityTier
 
 class BlastGate:
     """

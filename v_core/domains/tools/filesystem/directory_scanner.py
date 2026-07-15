@@ -12,7 +12,7 @@ class DirectoryScanner(BaseTool):
         self.name = "directory_scanner"
         self.description = "Scans a specific local file directory and returns a structured list of its contents."
         # Scanning is a safe read operation, so it runs autonomously without prompting the user.
-        self.security_tier = SecurityTier.READ
+        self.security_tier = SecurityTier.READ  
         self.preconditions = [self._check_os_access]
 
     def _check_os_access(self) -> bool:
