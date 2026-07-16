@@ -1,70 +1,59 @@
-PS D:\project-v> uvicorn v_backend.main:app --reload
+USER: Hey V, are you online?
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: Yes, I'm online and ready to assist you. What can I help you with today?
+USER: Scan the current directory.
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: Execution error: 'DirectoryScanner' object has no attribute 'run'
+USER: can you tell me what this website have? https://www.bbc.com/news
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: Execution error: 'WebScraper' object has no attribute 'run'
+
+
+PS D:\project-v> uvicorn v_backend.main:app --reload 
 INFO:     Will watch for changes in these directories: ['D:\\project-v']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [6932] using WatchFiles
-INFO:     Started server process [18700]
+INFO:     Started reloader process [1120] using WatchFiles
+INFO:     Started server process [8328]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     127.0.0.1:55403 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55403 - "GET /styles.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:65128 - "GET /app.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:65128 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:55113 - "GET /stream/?message=Hi%20V%2C%20checking%20in%2C%20how%20are%20you%3F HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52625 - "GET / HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52607 - "GET /stream/?message=%20Hey%20V%2C%20are%20you%20online%3F HTTP/1.1" 200 OK
 INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
 INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
 INFO: [CONVERSATIONAL NODE] Processing casual intent...
 INFO: [CONVERSATIONAL NODE] Response generated successfully.
-INFO:     127.0.0.1:59372 - "GET /stream/?message=Can%20you%20scan%20the%20current%20folder%3F HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62088 - "GET /stream/?message=%20Scan%20the%20current%20directory. HTTP/1.1" 200 OK
 INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
 INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
 INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
-INFO:     127.0.0.1:62501 - "GET /stream/?message=What%20did%20I%20just%20tell%20you%20to%20do%20V%3F HTTP/1.1" 200 OK
+INFO: [REACT RAW OUTPUT - LOOP 0]:
+{
+"Thought": "The user wants me to scan the current directory, so I'll use the directory_scanner tool to get a structural map of its contents.",
+"Action": "directory_scanner",
+"Action_Input": {},
+"Final_Answer": ""
+}
+ERROR: Loop 0 failed: 'DirectoryScanner' object has no attribute 'run'
+INFO:     127.0.0.1:56757 - "GET /stream/?message=can%20you%20tell%20me%20what%20this%20website%20have%3F%20https%3A%2F%2Fwww.bbc.com%2Fnews HTTP/1.1" 200 OK
 INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
-INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
-INFO: [CONVERSATIONAL NODE] Processing casual intent...
-INFO: [CONVERSATIONAL NODE] Response generated successfully.
-INFO:     127.0.0.1:58393 - "GET /stream/?message=What%20folder%20did%20you%20just%20scan%3F HTTP/1.1" 200 OK
-INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
-INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
-INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
+INFO: [ROUTER NODE] Traffic successfully routed to: RESEARCH
+INFO: [ORCHESTRATOR] Initiating ReAct loop for route: RESEARCH
 INFO: 1 change detected
-INFO: 1 change detected
-INFO: 1 change detected
-INFO: 1 change detected
-WARNING:  WatchFiles detected changes in 'v_core\domains\orchestration\state_machine.py'. Reloading...
- INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [18700]
-INFO: 5 changes detected
-INFO:     Started server process [12616]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:55822 - "GET / HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:59128 - "GET /stream/?message=Hi%20V%2C%20how%20are%20you%3F HTTP/1.1" 200 OK
-INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
-INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
-INFO: [CONVERSATIONAL NODE] Processing casual intent...
-INFO: [CONVERSATIONAL NODE] Response generated successfully.
-INFO:     127.0.0.1:63624 - "GET /stream/?message=Help%20me%20and%20scan%20the%20current%20folder%20please HTTP/1.1" 200 OK
-INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
-INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
-INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
-INFO:     127.0.0.1:63196 - "GET /stream/?message=What%20folder%20did%20you%20just%20scan%3F HTTP/1.1" 200 OK
-INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
-INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
-INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
+INFO: [REACT RAW OUTPUT - LOOP 0]:
+Here's my thought process and action plan:
 
+{
+"Thought": "The user asked about the content of a specific website. To answer this, I'll use the web_scraper tool to fetch the webpage and extract its contents.",
+"Action": "web_scraper",
+"Action_Input": {
+"url": "https://www.bbc.com/news"
+},
+"Final_Answer": ""
+}
 
-USER: Hi V, how are you?
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: I'm functioning within normal parameters, thank you for asking. I'm ready to assist you with any tasks or questions you may have. What would you like to accomplish today?
-USER: Help me and scan the current folder please
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: Simulated ReAct execution successful based on route.
-USER: What folder did you just scan?
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: Simulated ReAct execution successful based on route.
+Please let me know if you'd like me to execute this action!
+ERROR: Loop 0 failed: 'WebScraper' object has no attribute 'run'
+INFO: 1 change detected
