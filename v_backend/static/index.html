@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>V Terminal</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-log"></div>
+        
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Give V a command..." />
+            <button id="send-btn">Send</button>
+        </div>
+    </div>
+
+    <!-- The Blast Gate HITL Modal (Hidden by default) -->
+    <div id="blast-gate-modal" class="hidden">
+        <div class="modal-content">
+            <h3>⚠️ SECURITY INTERCEPT</h3>
+            <p id="blast-gate-prompt"></p>
+            <button id="auth-yes-btn">AUTHORIZE (Y)</button>
+            <button id="auth-no-btn">BLOCK (N)</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

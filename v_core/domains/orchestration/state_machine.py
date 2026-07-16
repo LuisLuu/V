@@ -36,7 +36,7 @@ Format:
   "Thought": "Your step-by-step reasoning",
   "Action": "Exact tool name, or 'None' if finished",
   "Action_Input": {{ "exact_parameter_name": "value" }}, 
-  "Final_Answer": "Your response to the user AS A PLAIN STRING (only populate if Action is 'None')"
+  "Final_Answer": "Your response to the user AS A PLAIN STRING. If Action is 'None', you MUST populate this field with your conversational reply. NEVER leave this empty."
 }}
 """
 
@@ -99,10 +99,8 @@ Format:
                 continue
                 
             # Check for termination
-            if parsed.get("Final_Answer"):
-                final_ans = parsed["Final_Answer"]
-                # Forcing the output to be a string so .startswith() never crashes
-                return final_ans if isinstance(final_ans, str) else json.dumps(final_ans)
+            if "Final_Answer" in parsed and isinstance(parsed["Final_Answer"], str) and parsed["Final_Answer"].strip():
+                return parsed["Final_Answer"]
                 
             tool_name = parsed.get("Action")
             action_args = parsed.get("Action_Input", {})

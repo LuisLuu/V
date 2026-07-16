@@ -1,50 +1,38 @@
-PS D:\project-v\v_backend> uvicorn main:app --reload
-INFO:     Will watch for changes in these directories: ['D:\\project-v\\v_backend']
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Scripts\uvicorn.exe\__main__.py", line 6, in <module>
-    sys.exit(main())
-             ~~~~^^
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1524, in __call__
-    return self.main(*args, **kwargs)
-           ~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1445, in main
-    rv = self.invoke(ctx)
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1308, in invoke
-    return ctx.invoke(self.callback, **ctx.params)
-           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 877, in invoke
-    return callback(*args, **kwargs)
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\main.py", line 441, in main
-    run(
-    ~~~^
-        app,
-        ^^^^
-    ...<48 lines>...
-        reset_contextvars=reset_contextvars,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\main.py", line 609, in run
-    config.load_app()
-    ~~~~~~~~~~~~~~~^^
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\config.py", line 415, in load_app
-    return import_from_string(self.app)
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\importer.py", line 22, in import_from_string
-    raise exc from None
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\importlib\__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
-  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
-  File "D:\project-v\v_backend\main.py", line 2, in <module>
-    from v_backend.routers import event_streams, chat_routes
-ModuleNotFoundError: No module named 'v_backend'
-PS D:\project-v\v_backend> 
+PS D:\project-v> uvicorn v_backend.main:app --reload  
+INFO:     Will watch for changes in these directories: ['D:\\project-v']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [11240] using WatchFiles
+INFO:     Started server process [15864]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:62010 - "GET / HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62010 - "GET /styles.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62010 - "GET /app.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53089 - "GET /stream/?message=Hello%20V%2C%20How%20are%20you%3F HTTP/1.1" 200 OK
+
+[DEBUG] V's Raw Output (Loop 0):
+{
+  "Thought": "I'm an AI agent, I don't have feelings like humans do, but I'm always ready to assist and chat.",
+  "Action": "None",
+  "Action_Input": {},
+  "Final_Answer": "Hello! Nice to meet you. I'm here to help with any questions or tasks you may have. What's on your mind?"
+}
+INFO:     127.0.0.1:52101 - "GET /stream/?message=Do%20you%20remember%20anything%3F HTTP/1.1" 200 OK
+
+[DEBUG] V's Raw Output (Loop 0):
+{
+  "Thought": "I'm an autonomous AI agent, I don't have personal memories or experiences like humans do. However, I can recall and reference the tools available to me.",
+  "Action": "None",
+  "Final_Answer": "No, I don't remember anything in the classical sense. Each interaction is a new start for me. But I'm here to help you with any questions or tasks you have!"
+}
+INFO:     127.0.0.1:55778 - "GET /stream/?message=Wow%20honest%20and%20truthful%20rare%20trait%2C%20can%20you%20access%20to%20the%20internet%3F HTTP/1.1" 200 OK
+
+[DEBUG] V's Raw Output (Loop 0):
+{
+"Thought": "The query asks if I can access the internet. As a V AI agent, I'm designed to operate within my defined capabilities. Upon reviewing the available tools, I don't see any direct internet access functions listed.",
+"Action": "rest_caller",
+"Action_Input": {
+"url": "https://www.google.com"
+},
+"Final_Answer": "No, I do not have a direct way to access the internet. However, if you provide me with a working URL and the necessary HTTP method and headers, I can attempt to make a REST call using the 'rest_caller' tool."
+}

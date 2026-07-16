@@ -1,0 +1,44 @@
+body {
+    background-color: #121212;
+    color: #00ffcc;
+    font-family: monospace;
+    padding: 20px;
+}
+
+#chat-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+#chat-log {
+    height: 60vh;
+    overflow-y: auto;
+    border: 1px solid #333;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.message { margin-bottom: 8px; }
+.message.user { color: #fff; }
+.message.thought { color: #555; font-style: italic; }
+.message.v { color: #00ffcc; font-weight: bold; }
+.message.system, .message.error { color: #ff3366; }
+
+.hidden { display: none !important; }
+
+/* Blast Gate Modal Styling */
+#blast-gate-modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: #222;
+    padding: 20px;
+    border: 2px solid #ff3366;
+    text-align: center;
+}
