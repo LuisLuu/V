@@ -19,16 +19,19 @@ class Orchestrator:
 
     def process_prompt(self, user_query: str) -> str:
         """
-        The main entry point. Routes the prompt to the appropriate cognitive track.
+        The main entry point. Routes the prompt and ensures global memory tracking.
         """
-        # Step 1: Route the Intent
+        self.ram.add_interaction(role="user", content=user_query)
         route = self.router.classify_intent(user_query)
         
-        # Step 2: Delegate to the correct agent
         if route == "CHAT":
-            return self.conversationalist.chat(user_query)
+            # We must remove the RAM saving logic inside ConversationalNode now that it's here
+            response = self.conversationalist.chat(user_query)
         else:
-            return self.execute_react_loop(user_query=user_query, route=route)
+            response = self.execute_react_loop(user_query=user_query, route=route)
+            
+        self.ram.add_interaction(role="v", content=response)
+        return response
 
     def execute_react_loop(self, user_query: str = "", route: str = "SYS_EXECUTE", session_id: str | None = None, user_auth: str | None = None, max_loops: int = 5) -> str:
         """

@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from v_backend.routers import event_streams, chat_routes
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 app = FastAPI(title="V Cognitive API")
 
