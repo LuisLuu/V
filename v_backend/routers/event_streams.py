@@ -35,7 +35,7 @@ async def stream_v_cognition(message: str = Query(..., description="The user pro
 
             # Run the actual heavy lifting loop
             # If the Blast Gate triggers an intercept, it returns the session structure.
-            response = v_agent.execute_react_loop(user_query=message)
+            response = v_agent.process_prompt(user_query=message)
             
             if response.startswith("SESSION:"):
                 parts = response.split("|", 1)

@@ -43,3 +43,19 @@ class ToolRegistry:
             return tool.execute(**kwargs)
         except Exception as e:
              return f"SYSTEM_ERROR: Tool {tool_name} crashed during execution: {str(e)}"
+        
+    def get_all_tool_descriptions(self) -> str:
+        """
+        Returns a formatted string of all registered tools and their descriptions
+        so the Orchestrator can inject them into the system prompt.
+        """
+        if not self.tools:
+            return "No tools currently registered."
+            
+        descriptions = []
+        for name, tool in self.tools.items():
+            # Assuming your tool objects have a __doc__ or description attribute
+            desc = getattr(tool, '__doc__', 'No description available.').strip()
+            descriptions.append(f"- {name}: {desc}")
+            
+        return "\n".join(descriptions)

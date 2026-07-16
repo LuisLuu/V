@@ -9,8 +9,7 @@ router = APIRouter(prefix="/chat", tags=["Communication"])
 
 # We initialize the agent globally here so her session memory 
 # persists across multiple HTTP requests.
-live_brain = OllamaClient(model_name="llama3")
-v_agent = Orchestrator(llm_interface=live_brain)
+v_agent = Orchestrator()
 
 class ChatPayload(BaseModel):
     """Enforces strict structural typing for incoming web requests."""
