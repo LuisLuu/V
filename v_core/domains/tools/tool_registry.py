@@ -29,21 +29,17 @@ class ToolRegistry:
         """
         return [tool.get_schema() for tool in self.tools.values()]
 
-    def execute_tool(self, tool_name: str, **kwargs) -> Any:
-        """
-        The execution router. Takes the tool name and raw arguments,
-        finds the script, and fires it.
-        """
-        if tool_name not in self.tools:
-            return f"SYSTEM_ERROR: The tool '{tool_name}' does not exist in the registry."
+    def execute_tool(self, tool_name: str, tool_params: dict | None = None) -> str:
+        """Executes the mapped tool with the provided input parameters."""
+        if tool_params is None:
+            tool_params = {}
             
-        tool = self.tools[tool_name]
-        
-        try:
-            return tool.execute(**kwargs)
-        except Exception as e:
-             return f"SYSTEM_ERROR: Tool {tool_name} crashed during execution: {str(e)}"
-        
+        if tool_name not in self.tools:
+            return f"Error: Tool '{tool_name}' not found."
+            
+        # Unpack the parameters into the tool's run method
+        return self.tools[tool_name].run(**tool_params)
+    
     def get_all_tool_descriptions(self) -> str:
         """
         Returns a formatted string of all registered tools and their descriptions
