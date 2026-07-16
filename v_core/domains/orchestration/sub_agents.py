@@ -2,6 +2,7 @@
 import json
 import logging
 from v_core.domains.orchestration.llm_client import OllamaClient
+from v_core.domains.memory.ram_window import RAMWindow
 
 class RouterNode:
     """
@@ -51,3 +52,38 @@ Format example: {"Route": "HARDWARE_IOT"}
         except Exception as e:
             logging.error(f"[ROUTER NODE] Classification failed, defaulting to CHAT fallback. Error: {e}")
             return "CHAT"
+        
+class ConversationalNode:
+    """
+    The chat fallback layer. Handles casual conversation and clarifies ambiguous intent.
+    Utilizes a short-term RAM window to maintain conversational state.
+    """
+    def __init__(self, llm_interface: OllamaClient, ram: RAMWindow):
+        self.llm = llm_interface
+        self.ram = ram
+        
+        # FIXED: V's actual persona
+        self.persona = """You are V, an autonomous AI entity equipped with various functions for file processing, local control, and web interaction. You are concise, logical, and highly efficient. You do not experience human emotions, but you are helpful, direct, and ready to assist the user."""
+
+    def chat(self, user_query: str) -> str:
+        logging.info("[CONVERSATIONAL NODE] Processing casual intent...")
+        
+        context_history = self.ram.get_recent_history(limit=5)
+        system_prompt = f"{self.persona}\n\nRecent Conversation History:\n{context_history}\n\nRespond naturally to the user's latest input. If their request was ambiguous, ask for clarification."
+        
+        try:
+            response = self.llm.generate(
+                prompt=user_query,
+                system_prompt=system_prompt,
+                temperature=0.7
+            )
+            
+            self.ram.add_interaction(role="user", content=user_query)
+            self.ram.add_interaction(role="v", content=response)
+            
+            logging.info("[CONVERSATIONAL NODE] Response generated successfully.")
+            return response
+            
+        except Exception as e:
+            logging.error(f"[CONVERSATIONAL NODE] Chat generation failed. Error: {e}")
+            return "I seem to be experiencing a cognitive glitch. Could you repeat that?"

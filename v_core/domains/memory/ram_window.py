@@ -1,57 +1,37 @@
-from typing import List, Dict
+# v_core/domains/memory/ram_window.py
+import logging
 
 class RAMWindow:
     """
-    V's immediate working memory. 
-    Strictly bounded to prevent context rot and latency spikes.
+    Manages V's short-term memory buffer. 
+    Uses a computational sensor to flag when compaction is required.
     """
-    def __init__(self, max_interactions: int = 10):
-        # Define a strict limit before triggering compaction
-        self.max_interactions = max_interactions
-        self.system_prompt: Dict = {}
-        
-        # Everything currently active
-        self.active_messages: List[Dict] = []
+    def __init__(self, capacity: int = 10):
+        # Capacity limits how many interactions we keep in RAM before compacting
+        self.capacity = capacity
+        self.buffer = []
+        self.is_critical = False
 
-    def set_system_index(self, index_text: str):
-        """
-        Loads the lightweight tool index. Phase 1 of Progressive Disclosure.
-        """
-        self.system_prompt = {"role": "system", "content": index_text}
+    def add_interaction(self, role: str, content: str, status: str = "active"):
+        """Appends a new message to the RAM buffer with a status tag."""
+        self.buffer.append({"role": role, "content": content, "status": status})
+        self._evaluate_sensor()
 
-    def append_node(self, role: str, content: str, status: str = "active"):
-        """
-        Adds a new message to RAM, attaching the metadata tag needed
-        by the Compaction Engine later.
-        """
-        node = {
-            "role": role,
-            "content": content,
-            "status": status  # "active", "completed", or "ephemeral"
-        }
-        self.active_messages.append(node)
+    def get_recent_history(self, limit: int = 5) -> str:
+        """Retrieves the most recent interactions formatted as a string."""
+        if not self.buffer:
+            return "No previous context."
+            
+        recent = self.buffer[-limit:]
+        history_str = ""
+        for msg in recent:
+            history_str += f"{msg['role'].upper()}: {msg['content']}\n"
+        return history_str.strip()
 
-    def is_critical(self) -> bool:
-        """
-        A fast computational sensor. 
-        Returns True if the desk is getting too cluttered.
-        """
-        return len(self.active_messages) >= self.max_interactions
-
-    def get_working_context(self) -> List[Dict]:
-        """
-        Assembles the exact payload sent to Qwen 2.5.
-        """
-        # Always inject the system instructions first
-        context = [self.system_prompt] if self.system_prompt else []
-        
-        # Append the raw text of the active session
-        context.extend(self.active_messages)
-        return context
-        
-    def clear_compacted_nodes(self, remaining_nodes: List[Dict]):
-        """
-        Called by the Compaction Engine after a sweep.
-        Replaces the cluttered RAM with the condensed state.
-        """
-        self.active_messages = remaining_nodes
+    def _evaluate_sensor(self):
+        """Computational sensor that triggers when the RAM window is full."""
+        if len(self.buffer) >= self.capacity:
+            self.is_critical = True
+            logging.warning("[RAM WINDOW] Capacity critical. Compaction trigger required.")
+        else:
+            self.is_critical = False
