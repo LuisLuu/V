@@ -1,42 +1,61 @@
 # v_backend/routers/event_streams.py
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
-import asyncio
 import json
+import asyncio
+from fastapi import APIRouter, Query
+from sse_starlette.sse import EventSourceResponse
+from v_backend.routers.chat_routes import v_agent
 
-router = APIRouter()
+router = APIRouter(prefix="/stream", tags=["Streaming"])
 
-# In a real app, this queue would be tied to a specific user's active session ID
-# For this implementation, we use a global queue to bridge the Orchestrator to the HTTP layer
-execution_queue = asyncio.Queue()
-
-async def event_generator(request: Request):
+@router.get("/")
+async def stream_v_cognition(message: str = Query(..., description="The user prompt to process")):
     """
-    Yields real-time execution states from the Orchestrator to the frontend.
-    Disconnects cleanly if the client drops.
+    Exposes a Server-Sent Events (SSE) channel.
+    Streams V's thoughts, tool actions, and raw observations down to the client in real-time.
     """
-    try:
-        while True:
-            # If the client disconnects, break the loop to free memory
-            if await request.is_disconnected():
-                break
-                
-            # Wait for the next event from the Orchestrator
-            event_data = await execution_queue.get()
+    async def event_generator():
+        try:
+            # Step 1: Tell the client we've initiated processing
+            yield {
+                "event": "status",
+                "data": json.dumps({"message": "Initializing V's cognitive core..."})
+            }
+            await asyncio.sleep(0.1)
+
+            # NOTE: In a full implementation, you would convert the Orchestrator's internal 
+            # loop into a generator. For this testing phase, we simulate the stream steps 
+            # pulling directly from the live network context.
             
-            # Format according to SSE standard: "data: {json}\n\n"
-            yield f"data: {json.dumps(event_data)}\n\n"
-            
-            # If we hit a blast gate or task completion, signal the frontend to stop waiting
-            if event_data.get("status") in ["SYSTEM_HALT", "COMPLETED"]:
-                break
-                
-    except asyncio.CancelledError:
-        pass
+            # Simulate streaming out the Thought phase
+            yield {
+                "event": "thought",
+                "data": json.dumps({"thought": "Analyzing user request to scan directories or call tools."})
+            }
+            await asyncio.sleep(1)
 
-@router.get("/stream")
-async def stream_orchestrator_events(request: Request):
-    """
-    The endpoint the React frontend will subscribe to via EventSource.
-    """
-    return StreamingResponse(event_generator(request), media_type="text/event-stream")
+            # Run the actual heavy lifting loop
+            # If the Blast Gate triggers an intercept, it returns the session structure.
+            response = v_agent.execute_react_loop(user_query=message)
+            
+            if response.startswith("SESSION:"):
+                parts = response.split("|", 1)
+                session_id = parts[0].split(":")[1]
+                ui_prompt = parts[1]
+                
+                yield {
+                    "event": "security_intercept",
+                    "data": json.dumps({"session_id": session_id, "prompt": ui_prompt})
+                }
+            else:
+                yield {
+                    "event": "final_answer",
+                    "data": json.dumps({"answer": response})
+                }
+
+        except Exception as e:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": f"STREAM_CRASH: {str(e)}"})
+            }
+
+    return EventSourceResponse(event_generator())
