@@ -2,29 +2,35 @@ import json
 import requests
 
 class OllamaClient:
-    """
-    Connects to a local Ollama instance. 
-    Enforces JSON output natively to prevent ReAct loop crashes.
-    """
-    def __init__(self, model_name: str = "llama3"):
+    def __init__(self, model_name: str = "llama3", base_url: str = "http://localhost:11434"):
         self.model_name = model_name
-        self.api_url = "http://127.0.0.1:11434/api/generate"
+        self.base_url = base_url
+
+    # Notice the 'str | None' fix here
+    def generate(self, prompt: str, system_prompt: str | None = None, temperature: float = 0.7) -> str:
+        """
+        Communicates directly with the local Ollama runner, allowing 
+        dynamic parameter tuning for different cognitive states.
+        """
+        url = f"{self.base_url}/api/generate"
         
-    def generate(self, prompt: str) -> str:
+        # Inject the system instructions if the router or executor provided them
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"<<SYS>>\n{system_prompt}\n<</SYS>>\n\n{prompt}"
+
         payload = {
             "model": self.model_name,
-            "prompt": prompt,
+            "prompt": full_prompt,
             "stream": False,
-            # We strictly enforce JSON mode at the API level
-            "format": "json" 
+            "options": {
+                "temperature": temperature
+            }
         }
-        
+
         try:
-            response = requests.post(self.api_url, json=payload, timeout=120)
+            response = requests.post(url, json=payload)
             response.raise_for_status()
-            data = response.json()
-            return data.get("response", "{}")
-        except requests.exceptions.ConnectionError:
-            return '{"SYSTEM_ERROR": "Failed to connect to Ollama. Is the server running?"}'
+            return response.json().get("response", "")
         except Exception as e:
-            return f'{{"SYSTEM_ERROR": "LLM generation failed: {str(e)}"}}'
+            raise RuntimeError(f"Cognitive core offline: {str(e)}")
