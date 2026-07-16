@@ -8,25 +8,25 @@ class OllamaClient:
 
     # Notice the 'str | None' fix here
     def generate(self, prompt: str, system_prompt: str | None = None, temperature: float = 0.7) -> str:
-        """
-        Communicates directly with the local Ollama runner, allowing 
-        dynamic parameter tuning for different cognitive states.
-        """
         url = f"{self.base_url}/api/generate"
         
-        # Inject the system instructions if the router or executor provided them
-        full_prompt = prompt
-        if system_prompt:
-            full_prompt = f"<<SYS>>\n{system_prompt}\n<</SYS>>\n\n{prompt}"
 
         payload = {
             "model": self.model_name,
-            "prompt": full_prompt,
+            "prompt": prompt, 
+            "system": system_prompt,  
             "stream": False,
             "options": {
                 "temperature": temperature
             }
         }
+
+        try:
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            return response.json().get("response", "")
+        except Exception as e:
+            raise RuntimeError(f"Cognitive core offline: {str(e)}")
 
         try:
             response = requests.post(url, json=payload)

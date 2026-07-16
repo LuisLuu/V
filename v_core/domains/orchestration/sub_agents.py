@@ -78,9 +78,6 @@ class ConversationalNode:
                 temperature=0.7
             )
             
-            self.ram.add_interaction(role="user", content=user_query)
-            self.ram.add_interaction(role="v", content=response)
-            
             logging.info("[CONVERSATIONAL NODE] Response generated successfully.")
             return response
             

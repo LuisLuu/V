@@ -1,29 +1,70 @@
-USER: Hi V, just checking on you, how are you?
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: <<SYS>>
-I am functioning within normal parameters. No issues detected. As an autonomous AI entity, I do not experience emotions or physical sensations. My purpose is to assist and provide information to the best of my abilities. What can I help you with today?
-USER: Scan the current directory.
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: Simulated ReAct execution successful based on route.
-USER: Wait, what did I just ask you to scan?
-SYSTEM: Initializing V's cognitive core...
-THOUGHT: Analyzing user request to scan directories or call tools.
-V: You didn't specify a particular file or directory to scan. Could you please clarify what you would like me to scan or provide more context about your request?
-
 PS D:\project-v> uvicorn v_backend.main:app --reload
 INFO:     Will watch for changes in these directories: ['D:\\project-v']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [9768] using WatchFiles
-INFO:     Started server process [20240]
+INFO:     Started reloader process [6932] using WatchFiles
+INFO:     Started server process [18700]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     127.0.0.1:56921 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56921 - "GET /styles.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49580 - "GET /app.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49580 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:58015 - "GET /stream/?message=Hi%20V%2C%20just%20checking%20on%20you%2C%20how%20are%20you%3F%20 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59559 - "GET /stream/?message=Scan%20the%20current%20directory. HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57793 - "GET /stream/?message=Wait%2C%20what%20did%20I%20just%20ask%20you%20to%20scan%3F HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55403 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55403 - "GET /styles.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65128 - "GET /app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65128 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55113 - "GET /stream/?message=Hi%20V%2C%20checking%20in%2C%20how%20are%20you%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
+INFO: [CONVERSATIONAL NODE] Processing casual intent...
+INFO: [CONVERSATIONAL NODE] Response generated successfully.
+INFO:     127.0.0.1:59372 - "GET /stream/?message=Can%20you%20scan%20the%20current%20folder%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
+INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
+INFO:     127.0.0.1:62501 - "GET /stream/?message=What%20did%20I%20just%20tell%20you%20to%20do%20V%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
+INFO: [CONVERSATIONAL NODE] Processing casual intent...
+INFO: [CONVERSATIONAL NODE] Response generated successfully.
+INFO:     127.0.0.1:58393 - "GET /stream/?message=What%20folder%20did%20you%20just%20scan%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
+INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
+INFO: 1 change detected
+INFO: 1 change detected
+INFO: 1 change detected
+INFO: 1 change detected
+WARNING:  WatchFiles detected changes in 'v_core\domains\orchestration\state_machine.py'. Reloading...
+ INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [18700]
+INFO: 5 changes detected
+INFO:     Started server process [12616]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:55822 - "GET / HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59128 - "GET /stream/?message=Hi%20V%2C%20how%20are%20you%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: CHAT
+INFO: [CONVERSATIONAL NODE] Processing casual intent...
+INFO: [CONVERSATIONAL NODE] Response generated successfully.
+INFO:     127.0.0.1:63624 - "GET /stream/?message=Help%20me%20and%20scan%20the%20current%20folder%20please HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
+INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
+INFO:     127.0.0.1:63196 - "GET /stream/?message=What%20folder%20did%20you%20just%20scan%3F HTTP/1.1" 200 OK
+INFO: [ROUTER NODE] Classifying user intent into the 4-tier matrix...
+INFO: [ROUTER NODE] Traffic successfully routed to: SYS_EXECUTE
+INFO: [ORCHESTRATOR] Initiating ReAct loop for route: SYS_EXECUTE
 
+
+USER: Hi V, how are you?
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: I'm functioning within normal parameters, thank you for asking. I'm ready to assist you with any tasks or questions you may have. What would you like to accomplish today?
+USER: Help me and scan the current folder please
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: Simulated ReAct execution successful based on route.
+USER: What folder did you just scan?
+SYSTEM: Initializing V's cognitive core...
+THOUGHT: Analyzing user request to scan directories or call tools.
+V: Simulated ReAct execution successful based on route.
