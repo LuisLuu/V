@@ -1,8 +1,7 @@
 from typing import Dict, Any, List
-
 from v_core.domains.tools.filesystem.directory_scanner import DirectoryScanner
 from v_core.domains.tools.filesystem.file_reader import FileReader
-from v_core.domains.tools.iots.bambu_controller import BambuController
+from v_core.domains.tools.iots.universal_iot_bridge import BambuController
 from v_core.domains.tools.system.command_executor import CommandExecutor
 from v_core.domains.tools.web.web_scraper import WebScraper
 from v_core.domains.tools.p_apis.rest_caller import RESTCaller
@@ -16,7 +15,7 @@ class ToolRegistry:
         self.tools = {
             "directory_scanner": DirectoryScanner(),
             "file_reader": FileReader(),
-            "bambu_controller": BambuController(),
+            "universal_iot_bridge": BambuController(),
             "command_executor": CommandExecutor(),
             "web_scraper": WebScraper(),
             "rest_caller": RESTCaller()
@@ -37,8 +36,7 @@ class ToolRegistry:
         if tool_name not in self.tools:
             return f"Error: Tool '{tool_name}' not found."
             
-        # Unpack the parameters into the tool's run method
-        return self.tools[tool_name].run(**tool_params)
+        return self.tools[tool_name].execute(**tool_params)
     
     def get_all_tool_descriptions(self) -> str:
         """

@@ -49,7 +49,7 @@ class DirectoryScanner(BaseTool):
             }
         }
 
-    def execute(self, directory_path: str, max_depth: int = 1) -> Dict[str, Any]:
+    def execute(self, directory_path: str = ".", max_depth: int = 1) -> Dict[str, Any]:
         """
         The physical action of scanning the drive. 
         Returns structured JSON rather than a messy string.
