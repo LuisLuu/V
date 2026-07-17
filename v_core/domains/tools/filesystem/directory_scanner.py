@@ -49,17 +49,18 @@ class DirectoryScanner(BaseTool):
             }
         }
 
-    def execute(self, directory_path: str = ".", max_depth: int = 1) -> Dict[str, Any]:
+    def execute(self, directory_path: str = ".", max_depth: int = 1, **kwargs) -> Dict[str, Any]:
         """
         The physical action of scanning the drive. 
         Returns structured JSON rather than a messy string.
         """
+        # Catch LLM hallucinations where it uses 'path' instead of 'directory_path'
+        if 'path' in kwargs:
+            directory_path = kwargs['path']
+
         if not os.path.exists(directory_path):
             return {"status": "error", "message": f"Directory not found: {directory_path}"}
         
-        if not os.path.isdir(directory_path):
-            return {"status": "error", "message": f"Path is a file, not a directory: {directory_path}"}
-
         structure = {}
         
         try:
