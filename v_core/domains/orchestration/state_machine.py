@@ -1,10 +1,53 @@
 import asyncio
 import json
-from typing import AsyncGenerator, Dict, Any
+import inspect
+from typing import AsyncGenerator
 
-# Mock imports based on your KeepSafe architecture
-# from v_core.domains.memory.ram_window import update_ram_window
-# from v_core.domains.tools.tool_registry import execute_tool_async
+from v_core.domains.tools.tool_registry import ToolRegistry
+
+# Initialize your registry (assuming it auto-discovers or registers tools on init)
+registry = ToolRegistry()
+
+async def execute_tool_async(tool_name: str, args: dict) -> dict:
+    """
+    The secure bridge to your Tool_Registry.
+    Enforces BaseTool preconditions and SecurityTiers before execution.
+    """
+    if not registry.has_tool(tool_name):
+         return {"status": "failed", "error": f"Tool '{tool_name}' not found in registry."}
+
+    # Get the instantiated tool object, not just a raw function
+    tool_instance = registry.get_tool(tool_name)
+
+    # 1. Hardware/Environment Precondition Check
+    if not tool_instance.verify_preconditions():
+        return {
+            "tool": tool_name, 
+            "status": "failed", 
+            "error": "Preconditions not met. Causal sensors rejected execution."
+        }
+
+    # 2. Security Tier Check (Human-in-the-Loop)
+    if tool_instance.security_tier.value == "human_approval":
+        # In a full build, this would suspend the state machine and push a UI prompt.
+        # For now, we block it to prevent rogue destructive actions.
+        return {
+            "tool": tool_name,
+            "status": "blocked",
+            "error": "DESTRUCTIVE action requires human approval. Execution paused."
+        }
+
+    try:
+        # 3. Execution Sandbox
+        if inspect.iscoroutinefunction(tool_instance.execute):
+            result = await tool_instance.execute(**args)
+        else:
+            result = await asyncio.to_thread(tool_instance.execute, **args)
+            
+        return {"tool": tool_name, "status": "success", "data": result}
+        
+    except Exception as e:
+        return {"tool": tool_name, "status": "failed", "error": str(e)}
 
 async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_iterations: int = 3):
     """
@@ -43,33 +86,37 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_itera
         if plan.get("tool_calls"):
             for tool in plan["tool_calls"]:
                 tool_name = tool.get('name')
+                tool_args = tool.get('args', {})
                 
-                # Check Sandboxing / Preconditions here
+                # Push status to the frontend UI
                 await yield_queue.put({"type": "status", "content": f"Executing {tool_name}..."})
                 
-                try:
-                    # execute_tool_async would handle the actual invocation
-                    result = await mock_execute_tool_async(tool_name, tool.get('args'))
-                    tool_results.append({"tool": tool_name, "status": "success", "data": result})
+                # Fire the real tool through our async bridge
+                execution_payload = await execute_tool_async(tool_name, tool_args)
+                tool_results.append(execution_payload)
+                
+                if execution_payload["status"] == "failed":
+                    await yield_queue.put({
+                        "type": "warning", 
+                        "content": f"Tool '{tool_name}' encountered an error: {execution_payload['error']}"
+                    })
+                else:
+                    await yield_queue.put({
+                        "type": "status", 
+                        "content": f"Tool '{tool_name}' execution complete."
+                    })
+
+                # 3. SYNTHESIZER
+                if not task_complete:
+                    await yield_queue.put({"type": "warning", "content": "Max iterations reached. Forcing synthesis."})
+
+                await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
+                
+                # Stream the final natural language response
+                async for token in mock_synthesizer_stream(prompt, tool_results):
+                    await yield_queue.put({"type": "token", "content": token})
                     
-                except Exception as e:
-                    # Catch brittle connector failures (e.g., API timeouts)
-                    error_msg = f"Tool {tool_name} failed: {str(e)}"
-                    tool_results.append({"tool": tool_name, "status": "failed", "error": error_msg})
-                    await yield_queue.put({"type": "warning", "content": error_msg})
-                    # The loop will restart, giving the Planner a chance to observe the failure
-
-    # 3. SYNTHESIZER
-    if not task_complete:
-        await yield_queue.put({"type": "warning", "content": "Max iterations reached. Forcing synthesis."})
-
-    await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
-    
-    # Stream the final natural language response
-    async for token in mock_synthesizer_stream(prompt, tool_results):
-        await yield_queue.put({"type": "token", "content": token})
-        
-    await yield_queue.put({"type": "done", "content": ""})
+                await yield_queue.put({"type": "done", "content": ""})
 
 # --- Mock Functions for structural testing ---
 async def mock_planner_llm_call(prompt: str, previous_results: list) -> str:
