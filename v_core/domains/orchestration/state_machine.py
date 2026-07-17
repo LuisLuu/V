@@ -36,10 +36,9 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
     except Exception as e:
         return {"tool": tool_name, "status": "failed", "error": str(e)}
 
-async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_iterations: int = 3):
+async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_history: list, max_iterations: int = 3):
     """
-    The Supervisor-led cognitive loop.
-    Prevents compounding errors by validating tool execution before synthesis.
+    Executes the Supervisor-led cognitive loop with short-term memory tracking.
     """
     await yield_queue.put({"type": "status", "content": "Initializing cognitive routing..."})
     
@@ -51,7 +50,8 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_itera
         current_iteration += 1
         await yield_queue.put({"type": "status", "content": f"Planning cycle {current_iteration}..."})
         
-        plan_payload = await planner_llm_call(prompt, tool_results)
+        # Pass chat_history to the planner
+        plan_payload = await planner_llm_call(prompt, tool_results, chat_history)
         
         try:
             plan = json.loads(plan_payload)
@@ -69,7 +69,6 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_itera
                 tool_args = tool.get('args', {})
                 
                 await yield_queue.put({"type": "status", "content": f"Executing {tool_name}..."})
-                
                 execution_payload = await execute_tool_async(tool_name, tool_args)
                 tool_results.append(execution_payload)
                 
@@ -85,7 +84,8 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_itera
 
     await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
     
-    async for token in synthesizer_stream(prompt, tool_results):
+    # Pass chat_history to the synthesizer stream
+    async for token in synthesizer_stream(prompt, tool_results, chat_history):
         await yield_queue.put({"type": "token", "content": token})
         
     await yield_queue.put({"type": "done", "content": ""})

@@ -5,7 +5,11 @@ const blastGateModal = document.getElementById('blast-gate-modal');
 const blastGatePrompt = document.getElementById('blast-gate-prompt');
 
 let currentSessionId = null;
-let currentVMessageDiv = null; // Tracks the active token stream bubble
+let currentVMessageDiv = null; 
+
+// NEW: Client-side memory states
+let chatHistory = []; 
+let currentVMessageText = ""; 
 
 function appendMessage(role, text) {
     const msgDiv = document.createElement('div');
@@ -13,19 +17,23 @@ function appendMessage(role, text) {
     msgDiv.innerText = `${role.toUpperCase()}: ${text}`;
     chatLog.appendChild(msgDiv);
     chatLog.scrollTop = chatLog.scrollHeight;
-    return msgDiv; // Return the element so we can append tokens to it later
+    return msgDiv; 
 }
 
 function sendQuery(message) {
     appendMessage('user', message);
     userInput.value = '';
-    currentVMessageDiv = null; // Reset the active bubble for a new response
+    currentVMessageDiv = null; 
+    currentVMessageText = ""; // Reset the buffer for the incoming response
     
-    // Connect to the correct async SSE endpoint
+    // Commit the user's prompt to the short-term history
+    chatHistory.push({ role: "user", content: message });
+    
+    // Package the prompt and the history array into the SSE request
     const encodedMsg = encodeURIComponent(message);
-    const eventSource = new EventSource(`/stream_response?prompt=${encodedMsg}`);
+    const encodedHistory = encodeURIComponent(JSON.stringify(chatHistory));
+    const eventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&history=${encodedHistory}`);
 
-    // Single message handler to route the JSON payloads
     eventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
 
@@ -33,27 +41,31 @@ function sendQuery(message) {
             appendMessage('system', data.content);
             
         } else if (data.type === "token") {
-            // If this is the first token, create the V bubble
             if (!currentVMessageDiv) {
                 currentVMessageDiv = appendMessage('v', '');
-                currentVMessageDiv.innerText = 'V: '; // Setup prefix
+                currentVMessageDiv.innerText = 'V: '; 
             }
-            // Append the streaming token to the existing bubble
+            // Append visually for the UI, and buffer internally for the memory array
             currentVMessageDiv.innerText += data.content;
+            currentVMessageText += data.content; 
             chatLog.scrollTop = chatLog.scrollHeight;
             
         } else if (data.type === "warning" || data.type === "error") {
             appendMessage('error', data.content);
             
         } else if (data.type === "blocked") {
-            // Trigger the human-in-the-loop intercept
-            // Note: Session ID logic will need backend support to fully resume
             currentSessionId = data.session_id || "pending_auth"; 
             blastGatePrompt.innerText = data.content;
             blastGateModal.classList.remove('hidden');
             eventSource.close(); 
             
         } else if (data.type === "done") {
+            // The response is complete. Push V's full answer into the memory array.
+            chatHistory.push({ role: "assistant", content: currentVMessageText.trim() });
+            
+            // Memory Compaction: Prevent the URL from getting too massive (keep last 10 turns)
+            if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
+            
             eventSource.close();
         }
     };
@@ -64,12 +76,11 @@ function sendQuery(message) {
     };
 }
 
-// Event Listeners for the UI
+// UI Event Listeners
 sendBtn.addEventListener('click', () => {
     if (userInput.value.trim() !== '') sendQuery(userInput.value);
 });
 
-// Allow hitting Enter to send
 userInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter' && userInput.value.trim() !== '') {
         sendQuery(userInput.value);
@@ -96,6 +107,8 @@ async function resolveBlastGate(authChoice) {
         
         if (response.ok) {
             appendMessage('v', data.v_response);
+            // Inject authorized bypass actions back into the context window
+            chatHistory.push({ role: "assistant", content: data.v_response });
         } else {
             appendMessage('error', data.detail || 'Authorization failed.');
         }
