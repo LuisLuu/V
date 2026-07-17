@@ -1,15 +1,22 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from v_backend.routers import event_streams, chat_routes
-import logging
+from fastapi.responses import HTMLResponse
+import os
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+from v_backend.routers import event_streams
 
-app = FastAPI(title="V Cognitive API")
+app = FastAPI()
 
-# Mount the SSE stream route
-app.include_router(chat_routes.router)
+# Mount the static directory to serve CSS and JS files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Include the new SSE router
 app.include_router(event_streams.router)
 
-# Mount the frontend directory.
-app.mount("/", StaticFiles(directory="v_backend/static", html=True), name="static")
+# Serve the main index.html page at the root URL
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    index_path = os.path.join(static_dir, "index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
