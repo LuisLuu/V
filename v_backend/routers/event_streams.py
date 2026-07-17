@@ -1,61 +1,45 @@
 # v_backend/routers/event_streams.py
-import json
 import asyncio
-from fastapi import APIRouter, Query
+import json
+from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
-from v_backend.routers.chat_routes import v_agent
 
-router = APIRouter(prefix="/stream", tags=["Streaming"])
+# Adjust import based on your actual path
+from v_core.domains.orchestration.state_machine import run_cognitive_graph
 
-@router.get("/")
-async def stream_v_cognition(message: str = Query(..., description="The user prompt to process")):
+router = APIRouter()
+
+@router.get("/stream_response")
+async def stream_response(request: Request, prompt: str):
     """
-    Exposes a Server-Sent Events (SSE) channel.
-    Streams V's thoughts, tool actions, and raw observations down to the client in real-time.
+    Streams the execution status and final synthesis tokens to the client.
+    Treats the agent's operations like an observable microservice pipeline.
     """
+    queue = asyncio.Queue()
+    
+    # Fire the cognitive graph as a background task
+    graph_task = asyncio.create_task(run_cognitive_graph(prompt, queue))
+    
     async def event_generator():
         try:
-            # Step 1: Tell the client we've initiated processing
-            yield {
-                "event": "status",
-                "data": json.dumps({"message": "Initializing V's cognitive core..."})
-            }
-            await asyncio.sleep(0.1)
-
-            # NOTE: In a full implementation, you would convert the Orchestrator's internal 
-            # loop into a generator. For this testing phase, we simulate the stream steps 
-            # pulling directly from the live network context.
-            
-            # Simulate streaming out the Thought phase
-            yield {
-                "event": "thought",
-                "data": json.dumps({"thought": "Analyzing user request to scan directories or call tools."})
-            }
-            await asyncio.sleep(1)
-
-            # Run the actual heavy lifting loop
-            # If the Blast Gate triggers an intercept, it returns the session structure.
-            response = v_agent.process_prompt(user_query=message)
-            
-            if response.startswith("SESSION:"):
-                parts = response.split("|", 1)
-                session_id = parts[0].split(":")[1]
-                ui_prompt = parts[1]
+            while True:
+                # Disconnect check to prevent zombie processes
+                if await request.is_disconnected():
+                    graph_task.cancel()
+                    print("Client disconnected. Task cancelled.")
+                    break
+                    
+                # Wait for the next message from the state machine
+                msg = await queue.get()
                 
-                yield {
-                    "event": "security_intercept",
-                    "data": json.dumps({"session_id": session_id, "prompt": ui_prompt})
-                }
-            else:
-                yield {
-                    "event": "final_answer",
-                    "data": json.dumps({"answer": response})
-                }
-
-        except Exception as e:
-            yield {
-                "event": "error",
-                "data": json.dumps({"error": f"STREAM_CRASH: {str(e)}"})
-            }
-
+                # Yield the payload to the frontend
+                yield json.dumps(msg)
+                
+                # Signal completion
+                if msg["type"] == "done":
+                    break
+                    
+        except asyncio.CancelledError:
+            print("Stream generation cancelled.")
+            
     return EventSourceResponse(event_generator())

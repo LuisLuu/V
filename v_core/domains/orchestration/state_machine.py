@@ -1,115 +1,89 @@
-# v_core/domains/orchestration/state_machine.py
+import asyncio
 import json
-import logging
-from v_core.domains.orchestration.llm_client import OllamaClient
-from v_core.domains.tools.tool_registry import ToolRegistry
-from v_core.domains.memory.ram_window import RAMWindow
-from v_core.domains.orchestration.sub_agents import RouterNode, ConversationalNode
-from v_core.domains.harness.blast_gates import BlastGate
-import re
+from typing import AsyncGenerator, Dict, Any
 
-class Orchestrator:
-    def __init__(self):
-        self.llm = OllamaClient()
-        self.registry = ToolRegistry()
-        self.blast_gate = BlastGate()
-        self.ram = RAMWindow()
-        self.router = RouterNode(llm_interface=self.llm)
-        self.conversationalist = ConversationalNode(llm_interface=self.llm, ram=self.ram)
+# Mock imports based on your KeepSafe architecture
+# from v_core.domains.memory.ram_window import update_ram_window
+# from v_core.domains.tools.tool_registry import execute_tool_async
 
-    def process_prompt(self, user_query: str) -> str:
-        self.ram.add_interaction(role="user", content=user_query)
-        route = self.router.classify_intent(user_query)
+async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_iterations: int = 3):
+    """
+    Executes the Supervisor-led cognitive loop.
+    Prevents compounding errors by validating tool execution before synthesis.
+    """
+    await yield_queue.put({"type": "status", "content": "Initializing cognitive routing..."})
+    
+    # Context Compaction Check could happen here before we start
+    # ram_status = await check_ram_window() 
+    
+    current_iteration = 0
+    tool_results = []
+    task_complete = False
+
+    while current_iteration < max_iterations and not task_complete:
+        current_iteration += 1
+        await yield_queue.put({"type": "status", "content": f"Planning cycle {current_iteration}..."})
         
-        if route == "CHAT":
-            response = self.conversationalist.chat(user_query)
-        else:
-            response = self.execute_react_loop(user_query=user_query, route=route)
-            
-        self.ram.add_interaction(role="v", content=response)
-        return response
-
-    def execute_react_loop(self, user_query: str = "", route: str = "SYS_EXECUTE", 
-                           session_id: str | None = None, user_auth: str | None = None, 
-                           max_loops: int = 5) -> str:
-        logging.info(f"[ORCHESTRATOR] Initiating ReAct loop for route: {route}")
+        # 1. ORCHESTRATOR / PLANNER 
+        # In production, this call must enforce Strict JSON mode.
+        plan_payload = await mock_planner_llm_call(prompt, tool_results)
         
-        if session_id and user_auth:
-            return "Command Authorized." if user_auth.upper() == 'Y' else "Command Blocked by User."
+        try:
+            plan = json.loads(plan_payload)
+        except json.JSONDecodeError:
+            await yield_queue.put({"type": "error", "content": "Failed to parse Planner output. Retrying..."})
+            continue # Loop back and let the LLM correct itself
 
-        context_history = self.ram.get_recent_history(limit=5)
-        available_tools = self.registry.get_all_tool_descriptions() 
-        
-        system_prompt = f"""You are V, an autonomous executing agent. 
-        Your current operational route is: {route}.
-        Previous Conversation Context:
-        {context_history}
+        # If the Planner decides it has enough info, break to Synthesizer
+        if plan.get("status") == "ready_to_synthesize":
+            task_complete = True
+            break
 
-        You have access to the following tools: 
-        {available_tools}
-
-        CRITICAL RULES OF EXECUTION:
-        1. If you need data you do not have, set "Action" to the correct tool_name.
-        2. DO NOT hallucinate or guess the tool's output. Wait for the Observation.
-        3. If the context contains an "Observation" that answers the user's query, you MUST set "Action" to "None" and put your conclusion in "Final_Answer".
-
-        You MUST output ONLY a valid JSON object. Use this exact format:
-        {{
-        "Thought": "Your step-by-step reasoning based on the query and any Observations.",
-        "Action": "tool_name OR None",
-        "Action_Input": {{parameters}},
-        "Final_Answer": "Leave empty if calling a tool. If Action is None, put your final response to the user here."
-        }}
-        """
-        
-        current_context = f"User Query: {user_query}\n"
-        
-        for i in range(max_loops):
-            try:
-                raw_response = self.llm.generate(prompt=current_context, system_prompt=system_prompt)
+        # 2. EXECUTOR (Async & Isolated)
+        if plan.get("tool_calls"):
+            for tool in plan["tool_calls"]:
+                tool_name = tool.get('name')
                 
-                # CRITICAL: Log exactly what the LLM tried to say so we can debug it
-                logging.info(f"[REACT RAW OUTPUT - LOOP {i}]:\n{raw_response}")
+                # Check Sandboxing / Preconditions here
+                await yield_queue.put({"type": "status", "content": f"Executing {tool_name}..."})
                 
-                # SURGICAL EXTRACTION: Find everything between the first { and last }
-                match = re.search(r'\{.*\}', raw_response, re.DOTALL)
-                
-                if match:
-                    json_string = match.group(0)
-                    # Add strict=False to prevent crashes from raw newlines
-                    parsed = json.loads(json_string, strict=False) 
-                else:
-                    raise ValueError(f"No valid JSON object found in response.")
-                
-                action = parsed.get("Action")
-                if action and action != "None":
-                    # 1. Execute the physical tool
-                    tool_output = self.registry.execute_tool(action, parsed.get("Action_Input", {}))
+                try:
+                    # execute_tool_async would handle the actual invocation
+                    result = await mock_execute_tool_async(tool_name, tool.get('args'))
+                    tool_results.append({"tool": tool_name, "status": "success", "data": result})
                     
-                    # 2. THE RAILGUARD: Hijack the execution flow.
-                    # We have the data, so we break the ReAct loop entirely and force a final, natural response.
-                    logging.info(f"[ORCHESTRATOR] Railguard triggered. Synthesizing output for {action}.")
-                    
-                    synthesis_prompt = f"""
-                    The user asked: {user_query}
-                    You executed the tool '{action}' and received this raw data:
-                    {tool_output}
-                    
-                    Provide the final, natural response to the user based on this data. Do not output JSON.
-                    """
-                    
-                    final_response = self.llm.generate(
-                        prompt=synthesis_prompt,
-                        system_prompt="You are V. Summarize the system data accurately, directly, and naturally."
-                    )
-                    
-                    return final_response
-                else:
-                    # No tool needed, return the final answer
-                    return str(parsed.get("Final_Answer", "Done."))
-                
-            except Exception as e:
-                logging.error(f"Loop {i} failed: {e}")
-                return f"Execution error: {str(e)}"
+                except Exception as e:
+                    # Catch brittle connector failures (e.g., API timeouts)
+                    error_msg = f"Tool {tool_name} failed: {str(e)}"
+                    tool_results.append({"tool": tool_name, "status": "failed", "error": error_msg})
+                    await yield_queue.put({"type": "warning", "content": error_msg})
+                    # The loop will restart, giving the Planner a chance to observe the failure
+
+    # 3. SYNTHESIZER
+    if not task_complete:
+        await yield_queue.put({"type": "warning", "content": "Max iterations reached. Forcing synthesis."})
+
+    await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
+    
+    # Stream the final natural language response
+    async for token in mock_synthesizer_stream(prompt, tool_results):
+        await yield_queue.put({"type": "token", "content": token})
         
-        return "Error: Max cognitive loops reached."
+    await yield_queue.put({"type": "done", "content": ""})
+
+# --- Mock Functions for structural testing ---
+async def mock_planner_llm_call(prompt: str, previous_results: list) -> str:
+    await asyncio.sleep(0.5)
+    if not previous_results:
+        return json.dumps({"status": "need_data", "tool_calls": [{"name": "directory_scanner", "args": {"path": "./"}}]})
+    return json.dumps({"status": "ready_to_synthesize"})
+
+async def mock_execute_tool_async(name: str, args: dict) -> str:
+    await asyncio.sleep(1)
+    return f"Executed {name} successfully."
+
+async def mock_synthesizer_stream(prompt: str, results: list) -> AsyncGenerator[str, None]:
+    words = ["Here", " is", " the", " synthesized", " data", " based", " on", " the", " tools."]
+    for word in words:
+        await asyncio.sleep(0.1)
+        yield word
