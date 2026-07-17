@@ -8,32 +8,29 @@ MODEL_NAME = "llama3"
 
 async def planner_llm_call(prompt: str, previous_results: list, chat_history: List[Dict[str, str]]) -> str:
     """
-    Evaluates the current prompt and forces strict tool usage using Few-Shot examples.
+    Evaluates the current prompt using Late Prompt Injection to prevent rule dilution.
     """
     tool_schemas = registry.get_all_schemas()
     
-    system_instruction = (
-        "You are V, a powerful desktop routing core. You have FULL authorization to access local files and the internet.\n"
-        f"Available Tools: {json.dumps(tool_schemas)}\n\n"
-        "CRITICAL RULES:\n"
-        "1. DO NOT FAKE DATA: Never output placeholder text like '[list of files]'. If you need data, call the tool.\n"
-        "2. URLs = SCRAPER: If the user provides a URL, you MUST call 'web_scraper'.\n"
-        "3. NO INVENTED TOOLS: Never output a tool named 'None'. If no tool is needed, use an empty list [].\n\n"
-        "EXAMPLES OF CORRECT JSON OUTPUT:\n"
-        "User: 'Scan the current directory'\n"
-        "Output: {\"status\": \"need_data\", \"tool_calls\": [{\"name\": \"directory_scanner\", \"args\": {\"directory_path\": \"./\"}}]}\n\n"
-        "User: 'What is on https://www.example.com?'\n"
-        "Output: {\"status\": \"need_data\", \"tool_calls\": [{\"name\": \"web_scraper\", \"args\": {\"url\": \"https://www.example.com\"}}]}\n\n"
-        "User: 'Hi' OR 'Tell me a joke' OR 'What did I just ask you?'\n"
-        "Output: {\"status\": \"ready_to_synthesize\", \"tool_calls\": []}\n"
-    )
+    # 1. Base Identity (Keep it brief)
+    messages = [{"role": "system", "content": "You are V's routing core. Your only purpose is to output valid JSON."}]
     
-    messages = [{"role": "system", "content": system_instruction}]
-    
+    # 2. Add History
     for turn in chat_history:
         messages.append(turn)
         
-    user_content = f"CURRENT TURN PROMPT: {prompt}"
+    # 3. Late Injection: Force the rules at the very end of the context window
+    injection = (
+        f"Available Tools: {json.dumps(tool_schemas)}\n\n"
+        "CRITICAL RULES:\n"
+        "1. DO NOT HALLUCINATE DATA: If the user provides a URL, you MUST call 'web_scraper'. If asked to scan a directory, you MUST call 'directory_scanner'.\n"
+        "2. NO INVENTED TOOLS: If no tool is needed, return an empty array [].\n\n"
+        "EXAMPLES:\n"
+        "Prompt: 'Scan the directory'\n"
+        "Output: {\"status\": \"need_data\", \"tool_calls\": [{\"name\": \"directory_scanner\", \"args\": {\"directory_path\": \"./\"}}]}\n\n"
+    )
+    
+    user_content = f"{injection}CURRENT TURN PROMPT: {prompt}"
     if previous_results:
         user_content += f"\nCURRENT TURN TOOL DATA: {json.dumps(previous_results)}"
         
@@ -65,7 +62,7 @@ async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict
         messages.append(turn)
         
     user_content = f"User Prompt: {prompt}"
-    if results: # FIX: Using the correct parameter name here
+    if results:
         user_content += f"\nExecuted Tool Data: {json.dumps(results)}"
         
     messages.append({"role": "user", "content": user_content})
