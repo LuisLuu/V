@@ -1,41 +1,30 @@
 import asyncio
 import json
 import inspect
-from typing import AsyncGenerator
 
-from v_core.domains.tools.tool_registry import ToolRegistry
-
-# Initialize your registry (assuming it auto-discovers or registers tools on init)
-registry = ToolRegistry()
+from v_core.domains.tools.tool_registry import registry
+from v_core.domains.orchestration.llm_client import planner_llm_call, synthesizer_stream
 
 async def execute_tool_async(tool_name: str, args: dict) -> dict:
     """
-    The secure bridge to your Tool_Registry.
-    Enforces BaseTool preconditions and SecurityTiers before execution.
+    Secure bridge enforcing BaseTool preconditions and SecurityTiers.
     """
     if not registry.has_tool(tool_name):
          return {"status": "failed", "error": f"Tool '{tool_name}' not found in registry."}
 
-    # Get the instantiated tool object, not just a raw function
     tool_instance = registry.get_tool(tool_name)
+
+    # FIX: Explicit 'is None' check to satisfy Pylance's static type narrowing
+    if tool_instance is None:
+        return {"status": "failed", "error": f"Tool '{tool_name}' failed to load."}
 
     # 1. Hardware/Environment Precondition Check
     if not tool_instance.verify_preconditions():
-        return {
-            "tool": tool_name, 
-            "status": "failed", 
-            "error": "Preconditions not met. Causal sensors rejected execution."
-        }
+        return {"tool": tool_name, "status": "failed", "error": "Causal sensors rejected execution."}
 
     # 2. Security Tier Check (Human-in-the-Loop)
     if tool_instance.security_tier.value == "human_approval":
-        # In a full build, this would suspend the state machine and push a UI prompt.
-        # For now, we block it to prevent rogue destructive actions.
-        return {
-            "tool": tool_name,
-            "status": "blocked",
-            "error": "DESTRUCTIVE action requires human approval. Execution paused."
-        }
+        return {"tool": tool_name, "status": "blocked", "error": "DESTRUCTIVE action requires approval."}
 
     try:
         # 3. Execution Sandbox
@@ -43,21 +32,16 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
             result = await tool_instance.execute(**args)
         else:
             result = await asyncio.to_thread(tool_instance.execute, **args)
-            
         return {"tool": tool_name, "status": "success", "data": result}
-        
     except Exception as e:
         return {"tool": tool_name, "status": "failed", "error": str(e)}
 
 async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_iterations: int = 3):
     """
-    Executes the Supervisor-led cognitive loop.
+    The Supervisor-led cognitive loop.
     Prevents compounding errors by validating tool execution before synthesis.
     """
     await yield_queue.put({"type": "status", "content": "Initializing cognitive routing..."})
-    
-    # Context Compaction Check could happen here before we start
-    # ram_status = await check_ram_window() 
     
     current_iteration = 0
     tool_results = []
@@ -67,70 +51,41 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, max_itera
         current_iteration += 1
         await yield_queue.put({"type": "status", "content": f"Planning cycle {current_iteration}..."})
         
-        # 1. ORCHESTRATOR / PLANNER 
-        # In production, this call must enforce Strict JSON mode.
-        plan_payload = await mock_planner_llm_call(prompt, tool_results)
+        plan_payload = await planner_llm_call(prompt, tool_results)
         
         try:
             plan = json.loads(plan_payload)
         except json.JSONDecodeError:
             await yield_queue.put({"type": "error", "content": "Failed to parse Planner output. Retrying..."})
-            continue # Loop back and let the LLM correct itself
+            continue
 
-        # If the Planner decides it has enough info, break to Synthesizer
         if plan.get("status") == "ready_to_synthesize":
             task_complete = True
             break
 
-        # 2. EXECUTOR (Async & Isolated)
         if plan.get("tool_calls"):
             for tool in plan["tool_calls"]:
                 tool_name = tool.get('name')
                 tool_args = tool.get('args', {})
                 
-                # Push status to the frontend UI
                 await yield_queue.put({"type": "status", "content": f"Executing {tool_name}..."})
                 
-                # Fire the real tool through our async bridge
                 execution_payload = await execute_tool_async(tool_name, tool_args)
                 tool_results.append(execution_payload)
                 
                 if execution_payload["status"] == "failed":
-                    await yield_queue.put({
-                        "type": "warning", 
-                        "content": f"Tool '{tool_name}' encountered an error: {execution_payload['error']}"
-                    })
+                    await yield_queue.put({"type": "warning", "content": f"Error: {execution_payload['error']}"})
+                elif execution_payload["status"] == "blocked":
+                    await yield_queue.put({"type": "warning", "content": f"Blocked: {execution_payload['error']}"})
                 else:
-                    await yield_queue.put({
-                        "type": "status", 
-                        "content": f"Tool '{tool_name}' execution complete."
-                    })
+                    await yield_queue.put({"type": "status", "content": f"Tool '{tool_name}' complete."})
 
-                # 3. SYNTHESIZER
-                if not task_complete:
-                    await yield_queue.put({"type": "warning", "content": "Max iterations reached. Forcing synthesis."})
+    if not task_complete:
+        await yield_queue.put({"type": "warning", "content": "Max iterations reached. Forcing synthesis."})
 
-                await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
-                
-                # Stream the final natural language response
-                async for token in mock_synthesizer_stream(prompt, tool_results):
-                    await yield_queue.put({"type": "token", "content": token})
-                    
-                await yield_queue.put({"type": "done", "content": ""})
-
-# --- Mock Functions for structural testing ---
-async def mock_planner_llm_call(prompt: str, previous_results: list) -> str:
-    await asyncio.sleep(0.5)
-    if not previous_results:
-        return json.dumps({"status": "need_data", "tool_calls": [{"name": "directory_scanner", "args": {"path": "./"}}]})
-    return json.dumps({"status": "ready_to_synthesize"})
-
-async def mock_execute_tool_async(name: str, args: dict) -> str:
-    await asyncio.sleep(1)
-    return f"Executed {name} successfully."
-
-async def mock_synthesizer_stream(prompt: str, results: list) -> AsyncGenerator[str, None]:
-    words = ["Here", " is", " the", " synthesized", " data", " based", " on", " the", " tools."]
-    for word in words:
-        await asyncio.sleep(0.1)
-        yield word
+    await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
+    
+    async for token in synthesizer_stream(prompt, tool_results):
+        await yield_queue.put({"type": "token", "content": token})
+        
+    await yield_queue.put({"type": "done", "content": ""})

@@ -1,10 +1,13 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+# Your existing imports stay exactly the same
 from v_core.domains.tools.filesystem.directory_scanner import DirectoryScanner
 from v_core.domains.tools.filesystem.file_reader import FileReader
 from v_core.domains.tools.iots.universal_iot_bridge import BambuController
 from v_core.domains.tools.system.command_executor import CommandExecutor
 from v_core.domains.tools.web.web_scraper import WebScraper
 from v_core.domains.tools.p_apis.rest_caller import RESTCaller
+from v_core.domains.tools.preconditions import BaseTool
 
 class ToolRegistry:
     """
@@ -12,6 +15,7 @@ class ToolRegistry:
     Loads tools into memory and routes execution requests from the Orchestrator.
     """
     def __init__(self):
+        # Your existing tool mapping remains completely intact
         self.tools = {
             "directory_scanner": DirectoryScanner(),
             "file_reader": FileReader(),
@@ -21,6 +25,18 @@ class ToolRegistry:
             "rest_caller": RESTCaller()
         }
 
+    # --- NEW METHODS FOR THE ORCHESTRATOR BRIDGE ---
+
+    def has_tool(self, tool_name: str) -> bool:
+        """Helper for the Orchestrator to verify tool existence before execution."""
+        return tool_name in self.tools
+
+    def get_tool(self, tool_name: str) -> Optional[BaseTool]:
+        """Safely retrieves the instantiated BaseTool object."""
+        return self.tools.get(tool_name)
+
+    # --- YOUR EXISTING SCHEMA METHODS ---
+
     def get_all_schemas(self) -> List[dict]:
         """
         Pulls the structured JSON schemas from all registered tools.
@@ -28,16 +44,6 @@ class ToolRegistry:
         """
         return [tool.get_schema() for tool in self.tools.values()]
 
-    def execute_tool(self, tool_name: str, tool_params: dict | None = None) -> str:
-        """Executes the mapped tool with the provided input parameters."""
-        if tool_params is None:
-            tool_params = {}
-            
-        if tool_name not in self.tools:
-            return f"Error: Tool '{tool_name}' not found."
-            
-        return self.tools[tool_name].execute(**tool_params)
-    
     def get_all_tool_descriptions(self) -> str:
         """
         Returns a formatted string of all registered tools and their descriptions
@@ -48,8 +54,10 @@ class ToolRegistry:
             
         descriptions = []
         for name, tool in self.tools.items():
-            # Assuming your tool objects have a __doc__ or description attribute
             desc = getattr(tool, '__doc__', 'No description available.').strip()
             descriptions.append(f"- {name}: {desc}")
             
         return "\n".join(descriptions)
+
+# Export a single singleton instance for the entire app to use
+registry = ToolRegistry()

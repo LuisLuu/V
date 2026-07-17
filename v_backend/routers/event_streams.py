@@ -1,10 +1,8 @@
-# v_backend/routers/event_streams.py
 import asyncio
 import json
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
-# Adjust import based on your actual path
 from v_core.domains.orchestration.state_machine import run_cognitive_graph
 
 router = APIRouter()
@@ -26,20 +24,14 @@ async def stream_response(request: Request, prompt: str):
                 # Disconnect check to prevent zombie processes
                 if await request.is_disconnected():
                     graph_task.cancel()
-                    print("Client disconnected. Task cancelled.")
                     break
                     
-                # Wait for the next message from the state machine
                 msg = await queue.get()
-                
-                # Yield the payload to the frontend
                 yield json.dumps(msg)
                 
-                # Signal completion
                 if msg["type"] == "done":
                     break
-                    
         except asyncio.CancelledError:
-            print("Stream generation cancelled.")
+            pass # Fails gracefully if the user drops connection
             
     return EventSourceResponse(event_generator())
