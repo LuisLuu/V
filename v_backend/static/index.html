@@ -2,27 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>V Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V Assistant</title>
+    <!-- Modern, clean font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <div id="chat-container">
-        <div id="chat-log"></div>
+    <div class="chat-wrapper">
+        <header class="chat-header">
+            <h2>V</h2>
+            <span class="status-indicator" id="global-status">Online</span>
+        </header>
         
-        <div id="input-area">
-            <input type="text" id="user-input" placeholder="Give V a command..." />
+        <main class="chat-log" id="chat-log">
+            <!-- Messages render here dynamically -->
+        </main>
+        
+        <footer class="input-area">
+            <input type="text" id="user-input" placeholder="Message V..." autocomplete="off">
             <button id="send-btn">Send</button>
-        </div>
-    </div>
-
-    <!-- The Blast Gate HITL Modal (Hidden by default) -->
-    <div id="blast-gate-modal" class="hidden">
-        <div class="modal-content">
-            <h3>⚠️ SECURITY INTERCEPT</h3>
-            <p id="blast-gate-prompt"></p>
-            <button id="auth-yes-btn">AUTHORIZE (Y)</button>
-            <button id="auth-no-btn">BLOCK (N)</button>
-        </div>
+        </footer>
     </div>
 
     <script src="/static/app.js"></script>
