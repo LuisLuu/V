@@ -5,7 +5,13 @@ import inspect
 
 from v_core.domains.tools.tool_registry import registry
 from v_core.domains.orchestration.llm_client import planner_llm_call, synthesizer_stream
+from v_core.domains.memory.router import MemoryRouter
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+DB_PATH = BASE_DIR / "v_core" / "domains" / "memory" / "rom.db"
+
+router = MemoryRouter(db_path=str(DB_PATH))
 async def execute_tool_async(tool_name: str, args: dict) -> dict:
     """
     Secure bridge enforcing BaseTool preconditions and SecurityTiers.
@@ -39,17 +45,22 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
 
 async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_history: list):
     """
-    Executes a strict, loop-free 1-2-3 cognitive pipeline.
-    Step 1: Plan
-    Step 2: Execute (Optional)
-    Step 3: Synthesize
+    Executes a strict, loop-free 0-1-2-3 cognitive pipeline.
     """
     await yield_queue.put({"type": "status", "content": "Initializing cognitive routing..."})
     tool_results = []
     
+    # --- STEP 0: CONTEXT ROUTING (New) ---
+    retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
+    
+    if retrieved_context:
+        # Augment the prompt invisibly so the LLM gets the memory
+        prompt = f"{prompt}\n\n[SYSTEM MEMORY INJECTION]: {retrieved_context}"
+        await yield_queue.put({"type": "status", "content": "Context retrieved from ROM."})
+    
     # --- STEP 1: PLAN ---
     await yield_queue.put({"type": "status", "content": "Planning execution path..."})
-    plan_payload = await planner_llm_call(prompt, tool_results, chat_history)
+    plan_payload = await planner_llm_call(prompt, tool_results, chat_history) #[cite: 2, 3]
     
     try:
         # Shred unwanted markdown wrappers
