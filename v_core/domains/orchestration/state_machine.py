@@ -9,9 +9,10 @@ from v_core.domains.memory.router import MemoryRouter
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-DB_PATH = BASE_DIR / "v_core" / "domains" / "memory" / "rom.db"
+DB_PATH = BASE_DIR / "data" / "rom.db"
 
 router = MemoryRouter(db_path=str(DB_PATH))
+
 async def execute_tool_async(tool_name: str, args: dict) -> dict:
     """
     Secure bridge enforcing BaseTool preconditions and SecurityTiers.
