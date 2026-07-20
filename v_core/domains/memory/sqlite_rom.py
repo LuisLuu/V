@@ -1,43 +1,99 @@
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, JSON, Index
-from sqlalchemy.orm import declarative_base
+import os
+import sqlite3
+import logging
+from contextlib import closing
+from typing import List, Dict, Any
 
-Base = declarative_base()
+# Configure a localized logger for the memory domain
+logger = logging.getLogger("v_core.memory")
 
-class MemoryNode(Base):
-    """
-    The Universal Container for V's long-term memory.
-    Everything is stored as a flexible JSON payload.
-    """
-    __tablename__ = "memory_nodes"
+class SQLiteROM:
+    def __init__(self, db_path: str = "v_memory.db"):
+        self.db_path = db_path
+        self._init_db()
 
-    # 1. The Primary Keys & Ownership
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, nullable=False, index=True) # Locks data to the specific user
+    def _get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
-    # 2. The Discriminators (The Bin Labels)
-    # Types: "user_fact", "task_log", "active_constraint"
-    type = Column(String, nullable=False, index=True) 
-    title = Column(String, nullable=True) # A quick human-readable summary
+    def _init_db(self):
+        # contextlib.closing ensures conn.close() is called automatically
+        with closing(self._get_connection()) as conn:
+            # The inner 'with conn:' handles the commit/rollback
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS chat_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        tags TEXT DEFAULT '',
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS chat_search_idx USING fts5(
+                        content,
+                        tags,
+                        content='chat_logs',
+                        content_rowid='id',
+                        tokenize='porter'
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TRIGGER IF NOT EXISTS after_chat_logs_insert 
+                    AFTER INSERT ON chat_logs BEGIN
+                        INSERT INTO chat_search_idx(rowid, content, tags) 
+                        VALUES (new.id, new.content, new.tags);
+                    END
+                """)
+        logger.info("SQLite ROM database initialized and schemas verified.")
 
-    # 3. The Payload (The Actual Components)
-    # This stores the raw unstructured data so we NEVER have to run a database migration.
-    payload = Column(JSON, nullable=False) 
-    
-    # 4. Temporal Data
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    def save_message(self, session_id: str, role: str, content: str, tags: str = "") -> int | None:
+        """Persists a single message segment into the long-term memory layer."""
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO chat_logs (session_id, role, content, tags) VALUES (?, ?, ?, ?)",
+                    (session_id, role, content, tags)
+                )
+                row_id = cursor.lastrowid
+                
+            logger.info(f"[ROM WRITE] Success. Session: {session_id} | RowID: {row_id} | Tags: [{tags}]")
+            return row_id
 
-    # Optimize for the Compaction Engine sweeping specific types of memories
-    __table_args__ = (
-        Index('idx_user_type', 'user_id', 'type'),
-    )
+    def get_recent_context(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Retrieves chronological exact context for the sliding window."""
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT role, content FROM chat_logs 
+                   WHERE session_id = ? 
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (session_id, limit)
+            )
+            rows = cursor.fetchall()
+            context = [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+            
+            logger.debug(f"[ROM READ] Fetched {len(context)} rows for context window.")
+            return context
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "type": self.type,
-            "title": self.title,
-            "payload": self.payload,
-            "timestamp": self.created_at.isoformat()
-        }
+    def vague_search(self, search_query: str) -> List[Dict[str, Any]]:
+        """Executes a full-text semantic-style match against content and tagged categories."""
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT c.id, c.content, c.tags, c.timestamp 
+                   FROM chat_search_idx s
+                   JOIN chat_logs c ON s.rowid = c.id
+                   WHERE s.chat_search_idx MATCH ? 
+                   ORDER BY s.rank LIMIT 5""",
+                (f"{search_query}*",)
+            )
+            results = [dict(row) for row in cursor.fetchall()]
+            
+            logger.info(f"[ROM SEARCH] Query: '{search_query}' yielded {len(results)} hits.")
+            return results
