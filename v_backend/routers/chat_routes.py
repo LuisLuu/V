@@ -1,15 +1,13 @@
 # v_backend/routers/chat_routes.py
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from v_core.domains.orchestration.state_machine import Orchestrator
-from v_core.domains.orchestration.llm_client import OllamaClient
 
-router = APIRouter(prefix="/chat", tags=["Communication"])
+# Import the actual function you built, not an imaginary class
+from v_core.domains.orchestration.state_machine import run_cognitive_graph
 
-# We initialize the agent globally here so her session memory 
-# persists across multiple HTTP requests.
-v_agent = Orchestrator()
+api_router = APIRouter()
 
 class ChatPayload(BaseModel):
     """Enforces strict structural typing for incoming web requests."""
@@ -17,26 +15,48 @@ class ChatPayload(BaseModel):
     session_id: Optional[str] = None
     user_auth: Optional[str] = None
 
-@router.post("/")
-def talk_to_v(payload: ChatPayload):
+@api_router.post("/")
+async def talk_to_v(payload: ChatPayload):
     """
-    Ingests a user prompt, runs the ReAct loop, and returns the response.
-    Can also resume a paused cognitive state if provided a session ID and auth flag.
+    Ingests a user prompt, executes the async cognitive graph, 
+    collects the streamed tokens, and returns the final synthesized string.
     """
+    if not payload.message:
+        raise HTTPException(status_code=400, detail="Payload must contain a 'message'.")
+
     try:
-        if payload.session_id and payload.user_auth:
-            # RESUME STATE: The user is authorizing a blocked action
-            response = v_agent.execute_react_loop(
-                session_id=payload.session_id, 
-                user_auth=payload.user_auth
-            )
-        elif payload.message:
-            # FRESH STATE: The user is asking a new question
-            response = v_agent.execute_react_loop(user_query=payload.message)
-        else:
-            raise HTTPException(status_code=400, detail="Payload must contain either a 'message' or a 'session_id' with 'user_auth'.")
+        # Create the queue required by your state machine
+        yield_queue = asyncio.Queue()
+        chat_history = [] # Placeholder until session memory is wired up
         
-        return {"v_response": response}
+        # Fire off the cognitive graph as a background task
+        graph_task = asyncio.create_task(
+            run_cognitive_graph(payload.message, yield_queue, chat_history)
+        )
+        
+        final_response = ""
+        
+        # Consume the queue to build the final string
+        while True:
+            item = await yield_queue.get()
+            
+            # The state machine signals it is finished
+            if item["type"] == "done":
+                break
+                
+            # Stitch the LLM tokens together
+            elif item["type"] == "token":
+                final_response += item["content"]
+                
+            # (Optional) You could log item["type"] == "status" or "warning" here 
+            # to see the planner/tool execution steps in your server console.
+            elif item["type"] in ["status", "warning"]:
+                print(f"[{item['type'].upper()}]: {item['content']}")
+
+        # Ensure the background task cleans up properly
+        await graph_task
+        
+        return {"v_response": final_response}
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"SYSTEM_CRASH: {str(e)}")
