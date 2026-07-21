@@ -1,14 +1,19 @@
 import os
 import sqlite3
 import logging
+from pathlib import Path
 from contextlib import closing
 from typing import List, Dict, Any
 
 # Configure a localized logger for the memory domain
 logger = logging.getLogger("v_core.memory")
 
+# Match the exact pathing logic from state_machine.py
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+DEFAULT_DB_PATH = str(BASE_DIR / "data" / "rom.db")
+
 class SQLiteROM:
-    def __init__(self, db_path: str = "v_memory.db"):
+    def __init__(self, db_path: str = DEFAULT_DB_PATH):
         self.db_path = db_path
         self._init_db()
 
@@ -18,9 +23,7 @@ class SQLiteROM:
         return conn
 
     def _init_db(self):
-        # contextlib.closing ensures conn.close() is called automatically
         with closing(self._get_connection()) as conn:
-            # The inner 'with conn:' handles the commit/rollback
             with conn:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -49,7 +52,17 @@ class SQLiteROM:
                         VALUES (new.id, new.content, new.tags);
                     END
                 """)
-        logger.info("SQLite ROM database initialized and schemas verified.")
+                # NEW: The missing trigger so updates from CompactionEngine are indexed
+                cursor.execute("""
+                    CREATE TRIGGER IF NOT EXISTS after_chat_logs_update 
+                    AFTER UPDATE OF tags ON chat_logs BEGIN
+                        UPDATE chat_search_idx 
+                        SET tags = new.tags 
+                        WHERE rowid = new.id;
+                    END
+                """)
+                
+        logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 
     def save_message(self, session_id: str, role: str, content: str, tags: str = "") -> int | None:
         """Persists a single message segment into the long-term memory layer."""
