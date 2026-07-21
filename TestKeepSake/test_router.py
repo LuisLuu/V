@@ -1,94 +1,58 @@
 import sqlite3
-import re
+from pathlib import Path
+from v_core.domains.memory.sqlite_rom import SQLiteROM
+from v_core.domains.memory.router import MemoryRouter
 
-def setup_mock_db():
-    """Creates a temporary in-memory FTS5 DB and seeds it with compacted memory."""
-    conn = sqlite3.connect(":memory:")
+def run_pipeline_test():
+    db_path = Path("data/rom.db")
+    
+    # 1. Initialize the Long-Term Memory (ROM)
+    print(">>> Spinning up ROM...")
+    rom = SQLiteROM(db_path=str(db_path))
+    
+    # 2. Injecting V Project specific constraints directly via SQLite to ensure insertion
+    print(">>> Injecting hardware specs into memory...")
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Create the FTS5 virtual table, using Porter stemming (like your ROM)
-    cursor.execute('''
-        CREATE VIRTUAL TABLE rom_memory USING fts5(
-            content, 
-            tags,
-            tokenize='porter'
-        )
-    ''')
+    test_memory = (
+        "V Project constraint log: The ESP32-S3 module handles the radio frequency components. "
+        "When upgrading the UI capabilities beyond the standard monochrome screen, monitor the GPIO pin "
+        "overlap with the RF transceivers to prevent signal degradation."
+    )
     
-    # Insert Turn 10 Recap: Simulated compacted memory
     cursor.execute('''
-        INSERT INTO rom_memory (content, tags) 
-        VALUES (
-            'User is building a custom hardware enclosure. Recommended material is high-temperature PETG due to heat constraints. Assembly requires specific tolerances.', 
-            '3dprint hardware enclosure petg'
-        )
-    ''')
+        INSERT INTO chat_logs (session_id, role, content, tags)
+        VALUES ('v_project_test', 'user', ?, 'hardware, esp32-s3')
+    ''', (test_memory,))
     conn.commit()
-    return conn
-
-def extract_keywords(prompt):
-    """A zero-latency, native Python keyword extractor to act as our Router."""
-    # A brutalist list of stop words to filter out conversational noise
-    stop_words = {"will", "the", "in", "that", "a", "is", "it", "to", "and", "or", "my", "do", "does", "can", "on", "we", "you", "think"}
+    conn.close()
     
-    # Strip punctuation and force lowercase
-    clean_text = re.sub(r'[^\w\s]', '', prompt.lower())
-    words = clean_text.split()
+    # 3. Fire the Router (Step 0 Orchestration)
+    print("\n>>> Firing MemoryRouter Step 0...")
+    router = MemoryRouter(db_path=str(db_path)) 
     
-    # Return only the meat of the prompt
-    return [w for w in words if w not in stop_words]
-
-def test_prompt_routing(conn, prompt):
-    cursor = conn.cursor()
-    print(f"\n[+] User Prompt: '{prompt}'")
+    # Simulate an ambiguous LLM query that requires technical context
+    query = "What do I need to watch out for when upgrading the V project screen?"
     
-    # ---------------------------------------------------------
-    # TEST 1: THE RAW PROMPT APPROACH (What happens if we don't filter?)
-    # ---------------------------------------------------------
-    print("  -> TEST 1: Raw Prompt Search")
-    # FTS5 crashes on raw conversational text with punctuation. We must split it.
-    raw_words = re.sub(r'[^\w\s]', '', prompt).split()
-    raw_query = " OR ".join(raw_words)
-    
+    # *Note: Change '.retrieve_context()' to whatever method name you actually wrote in router.py*
     try:
-        cursor.execute("SELECT content FROM rom_memory WHERE rom_memory MATCH ?", (raw_query,))
-        raw_result = cursor.fetchall()
-        print(f"     Query: MATCH '{raw_query}'")
-        print(f"     Result: {len(raw_result)} hits. (Warning: High risk of false positives from common words)")
+        retrieved_context = router.evaluate_and_fetch(query) 
+        
+        print(f"\n[QUERY]: '{query}'")
+        print(f"[RETRIEVED CONTEXT]: {retrieved_context}")
+        
+        # Realist evaluation: Did it actually pull the correct technical details?
+        if "radio frequency" in str(retrieved_context).lower():
+            print("\n[SUCCESS] Pipeline is green. FTS5 engine routed the technical context perfectly.")
+        else:
+            print("\n[FAILED] Router fired but missed the critical memory. Check your bm25() ranking logic or stop-word filters.")
+            
     except Exception as e:
-         print(f"     Result: FAILED - {e}")
-
-    # ---------------------------------------------------------
-    # TEST 2: THE EXTRACTED KEYWORD APPROACH (The Router Engine)
-    # ---------------------------------------------------------
-    print("\n  -> TEST 2: Extracted Keyword Search")
-    keywords = extract_keywords(prompt)
-    
-    # If the user just says "Hello" or "Do you think so?", keywords will be empty.
-    if not keywords:
-        print("     Result: Fast-Fail (No actionable keywords). Bypassing DB entirely to save VRAM.")
-        return
-
-    clean_query = " OR ".join(keywords)
-    cursor.execute("SELECT content FROM rom_memory WHERE rom_memory MATCH ?", (clean_query,))
-    clean_result = cursor.fetchall()
-    
-    print(f"     Query: MATCH '{clean_query}'")
-    if clean_result:
-         print(f"     Result: SUCCESS - V intercepts and injects Context: '{clean_result[0][0]}'")
-    else:
-         print("     Result: Zero matches in ROM. Bypassing DB injection.")
+        print(f"\n[CRASH] The router pipeline failed to execute: {e}")
+        print("Evaluate your router.py SQL query. Ensure it targets 'chat_search_idx' and uses the MATCH operator.")
 
 if __name__ == "__main__":
-    db_conn = setup_mock_db()
-    print("=== V CORE: MEMORY ROUTING PROTOTYPE ===")
-    
-    # Scenario A: The lazy, implicit user prompt
-    test_prompt_routing(db_conn, "Will the PETG warp?")
-    
-    # Scenario B: Pure conversational noise (Checking our fast-fail logic)
-    test_prompt_routing(db_conn, "Do you think it will rain today?")
-    
-    db_conn.close()
+    run_pipeline_test()
 
     # python -m TestKeepSake.test_router

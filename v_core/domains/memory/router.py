@@ -28,7 +28,7 @@ class MemoryRouter:
         clean_text = re.sub(r'[^\w\s]', '', prompt.lower())
         return [w for w in clean_text.split() if w not in STOP_WORDS]
 
-    def evaluate_and_fetch(self, prompt: str, threshold: float = -1.5) -> str | None:
+    def evaluate_and_fetch(self, prompt: str, threshold: float = 0.0) -> str | None:
         """
         Evaluates a prompt for keywords and fetches high-confidence context from ROM.
         Returns the context string if found, or None if fast-fail.
@@ -50,14 +50,17 @@ class MemoryRouter:
                 
                 # bm25() scores in FTS5 are negative. Lower (more negative) = more relevant.
                 cursor.execute('''
-                    SELECT content, bm25(rom_memory) as score 
-                    FROM rom_memory 
-                    WHERE rom_memory MATCH ? 
-                    ORDER BY score ASC 
-                    LIMIT 3
+                    SELECT content, rank 
+                    FROM chat_search_idx 
+                    WHERE chat_search_idx MATCH ? 
+                    ORDER BY rank 
+                    LIMIT 3;
                 ''', (query,))
                 
                 results = cursor.fetchall()
+                # Print or log this during testing so you aren't guessing
+                for row in results:
+                    print(f"DEBUG - Match Score: {row[1]} | Content: {row[0][:30]}...")
                 
                 if not results:
                     return None
