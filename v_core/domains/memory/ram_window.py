@@ -11,9 +11,14 @@ class RAMWindow:
         self.buffer: List[Dict[str, Any]] = []
         self.is_critical = False
 
-    def add_interaction(self, role: str, content: str, status: str = "active"):
-        """Appends a new message block to the tracking buffer."""
-        self.buffer.append({"role": role, "content": content, "status": status})
+    def add_interaction(self, role: str, content: str, row_id: int | None, status: str = "active"):
+        """Appends a new message block, now tracking the DB row_id."""
+        self.buffer.append({
+            "role": role, 
+            "content": content, 
+            "row_id": row_id, 
+            "status": status
+        })
         self._evaluate_sensor()
 
     def get_recent_history(self, limit: int = 5) -> str:
@@ -24,10 +29,22 @@ class RAMWindow:
         recent = self.buffer[-limit:]
         return "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent])
 
-    def clear_completed(self, condensed_buffer: List[Dict[str, Any]]):
-        """Updates the internal state buffer post-compaction pass."""
-        self.buffer = condensed_buffer
-        self._evaluate_sensor()
+    def extract_for_compaction(self, count: int = 4) -> List[Dict[str, Any]]:
+        """
+        Instantly slices the oldest messages out of RAM to prevent race conditions.
+        Returns the sliced messages for the background worker and resets the critical flag.
+        """
+        if not self.buffer:
+            return []
+            
+        # Grab the oldest N messages
+        to_compact = self.buffer[:count]
+        
+        # Keep the rest in active memory
+        self.buffer = self.buffer[count:]
+        self.is_critical = False
+        
+        return to_compact
 
     def _evaluate_sensor(self):
         """Monitors working memory bounds to trigger ROM flushes when threshold breaks."""

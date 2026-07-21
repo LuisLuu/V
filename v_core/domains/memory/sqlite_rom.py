@@ -69,14 +69,16 @@ class SQLiteROM:
         """Retrieves chronological exact context for the sliding window."""
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
+            # Added 'id' to the SELECT statement
             cursor.execute(
-                """SELECT role, content FROM chat_logs 
+                """SELECT id, role, content FROM chat_logs 
                    WHERE session_id = ? 
                    ORDER BY timestamp DESC LIMIT ?""",
                 (session_id, limit)
             )
             rows = cursor.fetchall()
-            context = [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+            # Include the id in the returned dictionary
+            context = [{"id": row["id"], "role": row["role"], "content": row["content"]} for row in reversed(rows)]
             
             logger.debug(f"[ROM READ] Fetched {len(context)} rows for context window.")
             return context
@@ -97,3 +99,15 @@ class SQLiteROM:
             
             logger.info(f"[ROM SEARCH] Query: '{search_query}' yielded {len(results)} hits.")
             return results
+        
+    def update_tags(self, row_id: int, tags: str):
+        """Updates the tag column for an existing message without duplicating it."""
+        from contextlib import closing
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE chat_logs SET tags = ? WHERE id = ?",
+                    (tags, row_id)
+                )
+        logger.info(f"[ROM UPDATE] Tags added to RowID: {row_id} | Tags: [{tags}]")

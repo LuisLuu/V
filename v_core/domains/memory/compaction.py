@@ -22,26 +22,14 @@ class CompactionEngine:
         except Exception:
             return ""
 
-    def compact_context(self, session_id: str, active_ram: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def compact_messages(self, messages_to_compact: List[Dict[str, Any]]):
         """
-        Sweeps the active RAM buffer.
-        Flushes completed turns into FTS5 SQLite storage and retains open steps in RAM.
+        Background worker process. Generates tags and updates existing ROM records via row_id.
         """
-        condensed_ram = []
-        for message in active_ram:
-            if message.get("status") == "completed":
-                # Extract tags automatically right before disk allocation
-                tags = self._generate_tags(message["content"])
-                
-                # Aligning directly with SQLiteROM interface
-                self.rom.save_message(
-                    session_id=session_id,
-                    role=message["role"],
-                    content=message["content"],
-                    tags=tags
-                )
-            else:
-                # Retain unresolved tasks or immediate dependencies in short-term RAM
-                condensed_ram.append(message)
-                
-        return condensed_ram
+        if not self.llm:
+            return
+
+        for message in messages_to_compact:
+            tags = self._generate_tags(message["content"])
+            if tags:
+                self.rom.update_tags(row_id=message["row_id"], tags=tags)
