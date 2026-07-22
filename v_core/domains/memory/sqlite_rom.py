@@ -28,7 +28,6 @@ class SQLiteROM:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
             
-            # 2. Start the transaction for table/trigger creation
             with conn: 
                 cursor = conn.cursor()
 
@@ -77,6 +76,27 @@ class SQLiteROM:
                         VALUES (new.id, new.content, new.tags);
                     END
                 """)
+
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'cancelled')) DEFAULT 'pending',
+                        priority TEXT CHECK(priority IN ('low', 'medium', 'high')) DEFAULT 'medium',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                cursor.execute("""
+                    CREATE TRIGGER IF NOT EXISTS after_tasks_update 
+                    AFTER UPDATE ON tasks 
+                    WHEN old.updated_at = new.updated_at 
+                    BEGIN
+                        UPDATE tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    END;
+                """)            
                 
         logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 

@@ -82,10 +82,12 @@ function sendQuery(message) {
         } else if (data.type === "token") {
             if (globalStatus) globalStatus.innerText = "Synthesizing...";
             
-            // Safe fallback to prevent .replace() null crash
-            const safeText = (data.content || "").toString().replace(/\n/g, '<br>');
-            currentTextDiv.innerHTML += safeText;
-            currentVMessageText += data.content; 
+            // 1. Accumulate raw token string
+            currentVMessageText += (data.content || ""); 
+            
+            // 2. Parse complete Markdown safely to HTML on every token
+            currentTextDiv.innerHTML = marked.parse(currentVMessageText);
+            
             chatLog.scrollTop = chatLog.scrollHeight;
             
         } else if (data.type === "warning" || data.type === "error") {
