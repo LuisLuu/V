@@ -1,3 +1,4 @@
+import json
 from typing import List, Dict, Any
 
 class CompactionEngine:
@@ -9,24 +10,35 @@ class CompactionEngine:
         self.llm = llm_client
 
     def _generate_tags(self, content: str) -> str:
-        """Helper to generate semantic search tags via local LLM before writing to ROM."""
+        """Generates strict semantic tags using enforced JSON schema."""
         if not self.llm:
             return ""
             
         prompt = (
-            f"Extract 3 to 5 simple, lowercase, comma-separated keywords or broad concepts "
-            f"from this text for database indexing. Return ONLY the keywords:\n\n{content}\n"
+            "You are a strict data indexing algorithm. Extract 3 to 5 simple, lowercase keywords "
+            "from the input text. You must reply ONLY with a valid JSON object containing a single key "
+            "'tags' that holds an array of strings.\n\n"
+            "Example output format:\n"
+            "{\"tags\": [\"keyword1\", \"keyword2\", \"keyword3\"]}\n\n"
+            f"Input text: {content}"
         )
         
         try:
             response = self.llm.generate(prompt)
-            # Constructive fix: Split by comma, strip whitespace properly, and rejoin.
-            # This preserves spaces inside multi-word concepts.
-            clean_tags = [tag.strip().lower() for tag in response.split(",")]
-            return ", ".join(clean_tags)
             
+            # The model is now forced by the Ollama API to return JSON
+            data = json.loads(response)
+            tags_list = data.get("tags", [])
+            
+            # Clean and Validate
+            clean_tags = [str(tag).strip().lower() for tag in tags_list if str(tag).strip()]
+            
+            return ", ".join(clean_tags[:5])
+            
+        except json.JSONDecodeError:
+            print(f"🚨 [LLM ERROR] Model failed to return valid JSON. Raw output: {response}")
+            return ""
         except Exception as e:
-            # STOP SWALLOWING ERRORS. Print exactly why the LLM failed.
             print(f"🚨 [LLM ERROR] Tag generation failed: {e}")
             return ""
 
@@ -42,7 +54,6 @@ class CompactionEngine:
 
         for message in messages_to_compact:
             try:
-                # Ensure row_id actually exists in the payload to prevent silent KeyErrors
                 row_id = message.get("row_id")
                 if not row_id:
                     print(f"⚠️ [COMPACTION] Missing row_id for message: {message.get('content', '')[:20]}...")
@@ -57,5 +68,4 @@ class CompactionEngine:
                     print(f"⚠️ [COMPACTION] Skipped Row {row_id}: No tags generated.")
                     
             except Exception as e:
-                # If SQLite is locked or the pipeline crashes, you will now see it.
                 print(f"🚨 [FATAL COMPACTION ERROR] Failed on row {message.get('row_id')}: {e}")

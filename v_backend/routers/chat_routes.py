@@ -24,7 +24,8 @@ class SyncOllamaClient:
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "format": "json"  
         }
         try:
             response = requests.post(self.url, json=payload, timeout=120)
@@ -34,7 +35,6 @@ class SyncOllamaClient:
         except Exception as e:
             print(f"🚨 [Sync LLM Error] {e}")
             return ""
-
 # 3. INITIALIZE ENGINE SECOND
 sync_llm = SyncOllamaClient()
 
