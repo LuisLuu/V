@@ -1,8 +1,8 @@
 import asyncio
+import requests
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, Dict
-
 from v_core.domains.orchestration.state_machine import run_cognitive_graph
 from v_core.domains.memory.ram_window import RAMWindow
 from v_core.domains.memory.sqlite_rom import SQLiteROM
@@ -13,11 +13,37 @@ api_router = APIRouter()
 # 1. INITIALIZE DB FIRST
 rom_db = SQLiteROM()
 
-# 2. INITIALIZE ENGINE SECOND (Passing None for llm_client temporarily)
-compaction_engine = CompactionEngine(rom_connection=rom_db, llm_client=None) 
+# 2. DEFINE THE SYNC CLIENT BLUEPRINT BEFORE USING IT
+class SyncOllamaClient:
+    """A dedicated synchronous client for the background CompactionEngine."""
+    def __init__(self, model="llama3", url="http://localhost:11434/api/generate"):
+        self.model = model
+        self.url = url
 
-# 3. THE SESSION MANAGER
+    def generate(self, prompt: str) -> str:
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False
+        }
+        try:
+            response = requests.post(self.url, json=payload, timeout=120)
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            return ""
+        except Exception as e:
+            print(f"🚨 [Sync LLM Error] {e}")
+            return ""
+
+# 3. INITIALIZE ENGINE SECOND
+sync_llm = SyncOllamaClient()
+
+# Pass the actual 'rom_db' variable, not the placeholder
+compaction_engine = CompactionEngine(rom_connection=rom_db, llm_client=sync_llm)
+
+# 4. THE SESSION MANAGER
 active_sessions: Dict[str, RAMWindow] = {}
+
 
 class ChatPayload(BaseModel):
     message: str

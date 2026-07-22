@@ -24,8 +24,14 @@ class SQLiteROM:
 
     def _init_db(self):
         with closing(self._get_connection()) as conn:
-            with conn:
+            # 1. Execute PRAGMAs outside the transaction block to actually enable WAL
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            
+            # 2. Start the transaction for table/trigger creation
+            with conn: 
                 cursor = conn.cursor()
+
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS chat_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +42,7 @@ class SQLiteROM:
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                
                 cursor.execute("""
                     CREATE VIRTUAL TABLE IF NOT EXISTS chat_search_idx USING fts5(
                         content,
@@ -45,6 +52,7 @@ class SQLiteROM:
                         tokenize='porter'
                     )
                 """)
+                
                 cursor.execute("""
                     CREATE TRIGGER IF NOT EXISTS after_chat_logs_insert 
                     AFTER INSERT ON chat_logs BEGIN
@@ -52,13 +60,21 @@ class SQLiteROM:
                         VALUES (new.id, new.content, new.tags);
                     END
                 """)
-                # NEW: The missing trigger so updates from CompactionEngine are indexed
+                
+                # 3. Correct FTS5 Update Logic: Delete old index, insert new index
+                cursor.execute("""
+                    CREATE TRIGGER IF NOT EXISTS before_chat_logs_update 
+                    BEFORE UPDATE OF tags ON chat_logs BEGIN
+                        INSERT INTO chat_search_idx(chat_search_idx, rowid, content, tags) 
+                        VALUES ('delete', old.id, old.content, old.tags);
+                    END
+                """)
+
                 cursor.execute("""
                     CREATE TRIGGER IF NOT EXISTS after_chat_logs_update 
                     AFTER UPDATE OF tags ON chat_logs BEGIN
-                        UPDATE chat_search_idx 
-                        SET tags = new.tags 
-                        WHERE rowid = new.id;
+                        INSERT INTO chat_search_idx(rowid, content, tags) 
+                        VALUES (new.id, new.content, new.tags);
                     END
                 """)
                 
