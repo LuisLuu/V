@@ -7,8 +7,11 @@ from v_core.domains.orchestration.state_machine import run_cognitive_graph
 from v_core.domains.memory.ram_window import RAMWindow
 from v_core.domains.memory.sqlite_rom import SQLiteROM
 from v_core.domains.memory.compaction import CompactionEngine
+from v_core.domains.tools.system.task_agent import TaskAgent
 
 api_router = APIRouter()
+task_router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+agent = TaskAgent()
 
 # 1. INITIALIZE DB FIRST
 rom_db = SQLiteROM()

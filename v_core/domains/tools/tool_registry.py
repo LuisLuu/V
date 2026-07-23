@@ -4,6 +4,7 @@ from v_core.domains.tools.filesystem.directory_scanner import DirectoryScanner
 from v_core.domains.tools.filesystem.file_reader import FileReader
 from v_core.domains.tools.iots.universal_iot_bridge import BambuController
 from v_core.domains.tools.system.command_executor import CommandExecutor
+from v_core.domains.tools.system.task_tool import TaskManagerTool
 from v_core.domains.tools.web.web_scraper import WebScraper
 from v_core.domains.tools.p_apis.rest_caller import RESTCaller
 from v_core.domains.tools.preconditions import BaseTool
@@ -21,7 +22,8 @@ class ToolRegistry:
             "command_executor": CommandExecutor(),
             "search_api": SearchAPI(),             
             "web_scraper": WebScraper(),
-            "rest_caller": RESTCaller()
+            "rest_caller": RESTCaller(),
+            "task_manager": TaskManagerTool()
         }
 
     def has_tool(self, tool_name: str) -> bool:
