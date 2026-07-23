@@ -9,23 +9,23 @@ MODEL_NAME = "llama3"
 async def planner_llm_call(prompt: str, previous_results: list, chat_history: List[Dict[str, str]]) -> str:
     tool_schemas = registry.get_all_schemas()
     
-    messages = [{"role": "system", "content": "You are V's routing core. Your only purpose is to output valid JSON."}]
+    # Flatten history into text to avoid strict Ollama role-alternating errors (400 Bad Request)
+    history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in chat_history]) if chat_history else "No previous history."
     
-    for turn in chat_history:
-        messages.append(turn)
-        
+    system_instruction = (
+        "You are V's routing core. Your only purpose is to output valid JSON containing tool execution plans.\n"
+        f"RECENT CONVERSATION HISTORY:\n{history_text}\n"
+    )
+    
+    messages = [{"role": "system", "content": system_instruction}]
+    
     injection = (
         f"Available Tools: {json.dumps(tool_schemas)}\n\n"
         "CRITICAL ROUTING RULES:\n"
-        "1. REAL-TIME / SEARCH QUERIES: If asked for fresh facts, news, documentation, or references, call 'search_api'.\n"
-        "2. SPECIFIC URLS ONLY: ONLY call 'web_scraper' if the user provides an explicit URL (e.g. 'https://...').\n"
-        "3. LOCAL DATA: Call 'directory_scanner' or 'file_reader' for local filesystem requests.\n"
-        "4. NO UNNECESSARY CALLS: If the prompt is basic common sense, math, or conversation, return an empty array [].\n\n"
-        "EXAMPLES:\n"
-        "Prompt: 'Search for recent ESP32-S3 TWAI documentation'\n"
-        "Output: {\"status\": \"need_data\", \"tool_calls\": [{\"name\": \"search_api\", \"args\": {\"query\": \"ESP32-S3 TWAI documentation\"}}]}\n\n"
-        "Prompt: 'Read https://github.com/espressif/arduino-esp32'\n"
-        "Output: {\"status\": \"need_data\", \"tool_calls\": [{\"name\": \"web_scraper\", \"args\": {\"url\": \"https://github.com/espressif/arduino-esp32\"}}]}\n\n"
+        "1. REAL-TIME / WEATHER / SEARCH: If asked for weather, news, facts, or references, call 'search_api' or 'rest_caller'.\n"
+        "2. SPECIFIC URLS ONLY: ONLY call 'web_scraper' if the user provides an explicit URL (e.g., 'https://...').\n"
+        "3. TASKS & REMINDERS: If the user asks to add, complete, remove, or view tasks/reminders, YOU MUST call the 'task_manager' tool.\n"
+        "4. NO UNNECESSARY CALLS: If the prompt is basic conversation or math, return an empty array [].\n\n"
     )
     
     user_content = f"{injection}CURRENT TURN PROMPT: {prompt}"
@@ -47,16 +47,21 @@ async def planner_llm_call(prompt: str, previous_results: list, chat_history: Li
             return result["message"]["content"]
 
 async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
-    messages = [{"role": "system", "content": "You are V, a helpful advanced desktop agent."}]
+    # Flatten history here as well
+    history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in chat_history]) if chat_history else "No previous history."
     
-    for turn in chat_history:
-        messages.append(turn)
-        
+    system_instruction = (
+        "You are V, a helpful advanced desktop agent.\n"
+        f"RECENT CONVERSATION HISTORY:\n{history_text}\n"
+    )
+    
+    messages = [{"role": "system", "content": system_instruction}]
+    
     injection = (
         "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n"
-        "CITATION RULE: When tool data contains web search snippets from 'search_api', "
-        "cite facts using inline links/brackets like [Title](URL).\n"
-        "Do not mention JSON schemas or internal tool names.\n\n"
+        "ANTI-HALLUCINATION RULE: NEVER claim to have completed an action (like adding, updating, or deleting a task) UNLESS the 'Executed Tool Data' explicitly confirms a 'success' status. If the tool data is empty or shows an error, you must tell the user the action failed.\n"
+        "CITATION RULE: When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
+        "Do not mention JSON schemas or internal tool names to the user.\n\n"
     )
     
     user_content = f"{injection}User Prompt: {prompt}"

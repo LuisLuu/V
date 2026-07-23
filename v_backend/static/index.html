@@ -4,26 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V Assistant</title>
-    <!-- Modern, clean font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css">
-    <script src="[https://cdn.jsdelivr.net/npm/marked/marked.min.js](https://cdn.jsdelivr.net/npm/marked/marked.min.js)"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <div class="chat-wrapper">
-        <header class="chat-header">
-            <h2>V</h2>
-            <span class="status-indicator" id="global-status">Online</span>
-        </header>
-        
-        <main class="chat-log" id="chat-log">
-            <!-- Messages render here dynamically -->
-        </main>
-        
-        <footer class="input-area">
-            <input type="text" id="user-input" placeholder="Message V..." autocomplete="off">
-            <button id="send-btn">Send</button>
-        </footer>
+    <div class="app-container">
+        <!-- Left Pane: Chat -->
+        <div class="chat-wrapper">
+            <header class="chat-header">
+                <h2>V</h2>
+                <span class="status-indicator" id="global-status">Online</span>
+            </header>
+            
+            <main class="chat-log" id="chat-log">
+                <!-- Messages render here dynamically -->
+            </main>
+            
+            <footer class="input-area">
+                <input type="text" id="user-input" placeholder="Message V..." autocomplete="off">
+                <button id="send-btn">Send</button>
+            </footer>
+        </div>
+
+        <!-- Right Pane: Task Ledger -->
+        <aside class="task-sidebar">
+            <header class="task-header">
+                <h2>System Tasks</h2>
+                <button id="refresh-tasks-btn" title="Sync with ROM">🔄</button>
+            </header>
+            
+            <div class="task-input-area">
+                <input type="text" id="new-task-input" placeholder="Quick add task..." autocomplete="off">
+                <button id="add-task-btn">+</button>
+            </div>
+
+            <div class="task-list" id="task-list">
+                <!-- Task items render here dynamically -->
+            </div>
+        </aside>
     </div>
 
     <script src="/static/app.js"></script>

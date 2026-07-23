@@ -28,7 +28,7 @@ class MemoryRouter:
         clean_text = re.sub(r'[^\w\s]', '', prompt.lower())
         return [w for w in clean_text.split() if w not in STOP_WORDS]
 
-    def evaluate_and_fetch(self, prompt: str, threshold: float = 0.0) -> str | None:
+    def evaluate_and_fetch(self, prompt: str, threshold: float = -2.0) -> str | None:
         """
         Evaluates a prompt for keywords and fetches high-confidence context from ROM.
         Returns the context string if found, or None if fast-fail.

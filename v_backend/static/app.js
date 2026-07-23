@@ -3,11 +3,21 @@ const userInput = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
 const globalStatus = document.getElementById('global-status');
 
+// Task Ledger DOM Elements
+const taskList = document.getElementById('task-list');
+const refreshBtn = document.getElementById('refresh-tasks-btn');
+const newTaskInput = document.getElementById('new-task-input');
+const addTaskBtn = document.getElementById('add-task-btn');
+
 let chatHistory = []; 
 let currentLogsDiv = null;
 let currentTextDiv = null;
 let currentVMessageText = "";
-let isStreaming = false; // Concurrency lock to prevent multiple streams
+let isStreaming = false;
+
+/* ==========================================================================
+   CHAT LOGIC
+   ========================================================================== */
 
 function appendUserMessage(text) {
     const row = document.createElement('div');
@@ -40,7 +50,6 @@ function setupVTurn() {
     currentTextDiv = textContent;
 }
 
-// Function to lock/unlock the UI
 function toggleInput(state) {
     isStreaming = !state;
     userInput.disabled = !state;
@@ -49,84 +58,51 @@ function toggleInput(state) {
 }
 
 function sendQuery(message) {
-    if (isStreaming) return; // Hard block against spam clicking
-    toggleInput(false);
+    if (!message.trim()) return;
     
+    // 1. Create the User's message bubble using your existing helper
     appendUserMessage(message);
-    userInput.value = '';
+    userInput.value = ''; // Clear input
     
-    chatHistory.push({ role: "user", content: message });
-    
-    const encodedMsg = encodeURIComponent(message);
-    const encodedHistory = encodeURIComponent(JSON.stringify(chatHistory));
-    const eventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&history=${encodedHistory}`);
-
+    // 2. Setup V's message UI and lock the input field
     setupVTurn();
-    currentVMessageText = "";
-    
-    if (globalStatus) {
-        globalStatus.innerText = "Thinking...";
-        globalStatus.style.color = "#F59E0B"; 
-    }
+    toggleInput(false); // Disables input while V is "typing"
+
+    // 3. Connect to the Backend Stream
+    const encodedMsg = encodeURIComponent(message);
+    const sessionId = "desktop_client_1";
+    const eventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&session_id=${sessionId}`);
 
     eventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
-
+        
+        // Map the backend stream payload to your existing HTML nodes
         if (data.type === "status") {
-            // FIX: Create an independent DOM node to avoid innerText race conditions
-            const logLine = document.createElement('div');
-            logLine.innerText = `> ${data.content}`;
-            currentLogsDiv.appendChild(logLine);
-            chatLog.scrollTop = chatLog.scrollHeight;
-            
+            currentLogsDiv.innerHTML += `<div>> ${data.content}</div>`;
         } else if (data.type === "token") {
-            if (globalStatus) globalStatus.innerText = "Synthesizing...";
-            
-            // 1. Accumulate raw token string
-            currentVMessageText += (data.content || ""); 
-            
-            // 2. Parse complete Markdown safely to HTML on every token
-            currentTextDiv.innerHTML = marked.parse(currentVMessageText);
-            
-            chatLog.scrollTop = chatLog.scrollHeight;
-            
-        } else if (data.type === "warning" || data.type === "error") {
-            const errorLine = document.createElement('div');
-            errorLine.innerText = `[ERROR] ${data.content}`;
-            currentLogsDiv.appendChild(errorLine);
-            currentLogsDiv.parentElement.open = true; 
-            
-        } else if (data.type === "blocked") {
-            if (globalStatus) globalStatus.innerText = "Intercepted";
-            currentTextDiv.innerHTML += `<br><em style="color:#EF4444;">[Action Intercepted: Security Halt]</em>`;
-            eventSource.close();
-            toggleInput(true);
-            
+            currentTextDiv.innerHTML += data.content;
+        } else if (data.type === "warning") {
+            currentLogsDiv.innerHTML += `<div style="color:red;">> Error: ${data.content}</div>`;
         } else if (data.type === "done") {
-            chatHistory.push({ role: "assistant", content: currentVMessageText.trim() });
-            if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
-            
-            if (globalStatus) {
-                globalStatus.innerText = "Online";
-                globalStatus.style.color = "#10B981"; 
-            }
             eventSource.close();
-            toggleInput(true);
+            
+            // Optional: Parse Markdown if V outputs lists or bold text
+            if (typeof marked !== 'undefined') {
+                currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
+            }
+            
+            toggleInput(true); // Re-enable input
+            fetchTasks(); // Refresh tasks after stream completes
         }
+        
+        chatLog.scrollTop = chatLog.scrollHeight;
     };
 
-    eventSource.onerror = function(err) {
-        const disconnectLine = document.createElement('div');
-        disconnectLine.innerText = `[STREAM DISCONNECTED]`;
-        currentLogsDiv.appendChild(disconnectLine);
-        currentLogsDiv.parentElement.open = true;
-
-        if (globalStatus) {
-            globalStatus.innerText = "Error";
-            globalStatus.style.color = "#EF4444";
-        }
+    eventSource.onerror = function() {
         eventSource.close();
+        currentLogsDiv.innerHTML += `<div style="color:red;">> Connection Error.</div>`;
         toggleInput(true);
+        fetchTasks();
     };
 }
 
@@ -137,3 +113,86 @@ sendBtn.addEventListener('click', () => {
 userInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && userInput.value.trim() !== '') sendQuery(userInput.value);
 });
+
+
+/* ==========================================================================
+   TASK LEDGER LOGIC (Direct REST to Backend)
+   ========================================================================== */
+
+// 1. Fetch tasks from the database and render them
+async function fetchTasks() {
+    try {
+        const response = await fetch('/api/tasks/');
+        const tasks = await response.json();
+        
+        taskList.innerHTML = ''; // Clear UI
+        
+        // Filter out completed and cancelled tasks before rendering
+        const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
+
+        if (activeTasks.length === 0) {
+            taskList.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No active tasks.</div>';
+            return;
+        }
+
+        activeTasks.forEach(task => {
+            const card = document.createElement('div');
+            card.className = 'task-card';
+            
+            card.innerHTML = `
+                <input type="checkbox" class="task-checkbox" onchange="toggleTaskStatus(${task.id}, this.checked)">
+                <div class="task-details">
+                    <span class="task-title">${task.title}</span>
+                    <span class="task-meta">
+                        <span class="priority-${task.priority}">${task.priority}</span> | ${task.status.replace('_', ' ')}
+                    </span>
+                </div>
+            `;
+            taskList.appendChild(card);
+        });
+    } catch (error) {
+        console.error("Failed to fetch tasks:", error);
+    }
+}
+
+// 2. Toggle task status (User UI interaction)
+async function toggleTaskStatus(taskId, isChecked) {
+    const newStatus = isChecked ? 'completed' : 'pending';
+    try {
+        await fetch(`/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        fetchTasks(); // Reload visual state
+    } catch (error) {
+        console.error("Failed to update task:", error);
+    }
+}
+
+// 3. Create a new task (User UI interaction)
+async function createTask(title) {
+    try {
+        await fetch('/api/tasks/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title, priority: "medium" })
+        });
+        newTaskInput.value = '';
+        fetchTasks();
+    } catch (error) {
+        console.error("Failed to create task:", error);
+    }
+}
+
+// Event Listeners for the Task Widget
+refreshBtn.addEventListener('click', fetchTasks);
+addTaskBtn.addEventListener('click', () => {
+    if (newTaskInput.value.trim() !== '') createTask(newTaskInput.value);
+});
+newTaskInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && newTaskInput.value.trim() !== '') createTask(newTaskInput.value);
+});
+
+// Initial load
+window.addEventListener('load', fetchTasks);
