@@ -4,7 +4,7 @@ from v_core.domains.tools.system.task_agent import TaskAgent
 
 class TaskManagerTool(BaseTool):
     name: str = "task_manager"
-    description: str = "Create, list, or update tasks in V's system ledger."
+    description: str = "Create, read, update, or delete tasks in V's system ledger."
     security_tier: SecurityTier = SecurityTier.WRITE
 
     def __init__(self, agent: TaskAgent | None = None):
@@ -21,7 +21,8 @@ class TaskManagerTool(BaseTool):
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["create", "list", "update"],
+                            # FIX: Added 'read' and 'delete' to the allowed actions
+                            "enum": ["create", "list", "read", "update", "delete"],
                             "description": "The task action to perform."
                         },
                         "title": {
@@ -39,12 +40,12 @@ class TaskManagerTool(BaseTool):
                         },
                         "task_id": {
                             "type": "integer",
-                            "description": "Task ID (required for 'update')."
+                            "description": "Task ID (required for 'update' or 'delete')."
                         },
                         "status": {
                             "type": "string",
                             "enum": ["pending", "in_progress", "completed", "cancelled"],
-                            "description": "Task status (required for 'update', optional filter for 'list')."
+                            "description": "Task status (required for 'update', optional for 'list')."
                         }
                     },
                     "required": ["action"]
@@ -62,7 +63,8 @@ class TaskManagerTool(BaseTool):
                 description=kwargs.get("description", ""),
                 priority=kwargs.get("priority", "medium")
             )
-        elif action == "list":
+        # FIX: Map both 'list' and 'read' to the same function to prevent strict routing failures
+        elif action in ["list", "read"]:
             return self.agent.list_tasks(status_filter=kwargs.get("status"))
         elif action == "update":
             task_id = kwargs.get("task_id")
@@ -70,5 +72,11 @@ class TaskManagerTool(BaseTool):
             if task_id is None or status is None:
                 return {"status": "error", "message": "'task_id' and 'status' are required for 'update'."}
             return self.agent.update_task(task_id=task_id, status=status)
+        # FIX: Execute the new delete logic
+        elif action == "delete":
+            task_id = kwargs.get("task_id")
+            if task_id is None:
+                return {"status": "error", "message": "'task_id' is required for 'delete'."}
+            return self.agent.delete_task(task_id=task_id)
         else:
             return {"status": "error", "message": f"Unknown action '{action}'."}

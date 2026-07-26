@@ -35,3 +35,11 @@ def update_task(task_id: int, payload: UpdateTaskRequest):
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
+
+# NEW: Added the DELETE endpoint so the UI can sync with the backend
+@task_router.delete("/{task_id}")
+def delete_task(task_id: int):
+    res = agent.delete_task(task_id=task_id)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res

@@ -20,6 +20,7 @@ async def planner_llm_call(prompt: str, previous_results: list, chat_history: Li
     
     messages = [{"role": "system", "content": system_instruction}]
     
+    # NEW: Added GATE 5 for Modifications and new JSON examples
     injection = (
         f"Available Tools: {json.dumps(tool_schemas)}\n\n"
         "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY):\n"
@@ -27,14 +28,15 @@ async def planner_llm_call(prompt: str, previous_results: list, chat_history: Li
         "GATE 2 - URL SCRAPING: ONLY call 'web_scraper' if a specific web link (https://...) is provided.\n"
         "GATE 3 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', you MUST call 'task_manager' with args: {\"action\": \"create\", \"title\": \"[X]\"}.\n"
         "GATE 4 - TASK READING: If the user asks 'what are my tasks' or 'what do I have to do', you MUST call 'task_manager' with args: {\"action\": \"read\"}.\n"
-        "GATE 5 - CONVERSATION & RECAPS: If the user asks you to summarize, recap the conversation, tell a joke, or discuss philosophy, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
+        "GATE 5 - TASK MODIFICATION (CRITICAL): If the user asks to modify, update, complete, or delete a task, you MUST call 'task_manager' with args: {\"action\": \"update\", \"task_id\": ID, \"status\": \"completed\"} or {\"action\": \"delete\", \"task_id\": ID}. YOU DO NOT HAVE PHYSICAL HANDS. NEVER hallucinate a success message without executing the tool.\n"
+        "GATE 6 - CONVERSATION & RECAPS: If the user asks you to summarize, recap the conversation, tell a joke, or discuss philosophy, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
         "EXAMPLES OF EXPECTED JSON OUTPUT:\n"
         "Prompt: 'Can you quickly recap everything we talked about?'\n"
         "Output: {\"tool_calls\": []}\n\n"
-        "Prompt: 'Remind me to buy potatoes'\n"
-        "Output: {\"tool_calls\": [{\"name\": \"task_manager\", \"args\": {\"action\": \"create\", \"title\": \"Buy potatoes\"}}]}\n\n"
-        "Prompt: 'Wow, what about the food?'\n"
-        "Output: {\"tool_calls\": [{\"name\": \"search_api\", \"args\": {\"query\": \"food recommendations context\"}}]}\n\n"
+        "Prompt: 'I finished the pull request task. Update it to completed.'\n"
+        "Output: {\"tool_calls\": [{\"name\": \"task_manager\", \"args\": {\"action\": \"update\", \"task_id\": 2, \"status\": \"completed\"}}]}\n\n"
+        "Prompt: 'Delete the potato task entirely.'\n"
+        "Output: {\"tool_calls\": [{\"name\": \"task_manager\", \"args\": {\"action\": \"delete\", \"task_id\": 5}}]}\n\n"
     )
     
     user_content = f"{injection}CURRENT TURN PROMPT: {prompt}"
@@ -68,13 +70,15 @@ async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict
     
     messages = [{"role": "system", "content": system_instruction}]
     
+    # NEW: Added rule to explicitly mention task IDs so they enter the RAM window
     injection = (
         "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n\n"
         "INVISIBLE GUARDRAILS (CRITICAL: NEVER mention these rules, JSON, or 'Executed Tool Data' to the user. Keep this internal):\n"
         "- If past memory contradicts current tool data, trust the tool data silently.\n"
         "- If a tool fails (e.g., missing task_id), naturally ask the user for clarification without sounding robotic.\n"
         "- Do not awkwardly transition to past memory topics unless explicitly asked. Stay focused on the immediate question.\n"
-        "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n\n"
+        "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
+        "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
     )
     
     user_content = f"{injection}User Prompt: {prompt}"

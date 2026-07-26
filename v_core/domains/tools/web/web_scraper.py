@@ -3,16 +3,16 @@ from v_core.domains.tools.preconditions import BaseTool, SecurityTier
 
 class WebScraper(BaseTool):
     """
-    Fetches web pages and extracts the raw text payload, 
-    stripping away the HTML DOM, CSS, and Javascript.
+    Fetches web pages and performs targeted extraction of semantic HTML tags (paragraphs, headers, lists)
+    to prevent LLM context window blowout.
     """
     def __init__(self):
         self.name = "web_scraper"
         self.description = "Fetches a URL and returns clean text content. Use this to read documentation or search the live web."
         self.security_tier = SecurityTier.READ
         self.preconditions = [self._check_dependencies]
-        # Generous buffer for articles and documentation
-        self.max_chars = 15000 
+        # Reduced from 15,000 to 5,000 to prevent LLM "Lost in the Middle" amnesia
+        self.max_chars = 5000 
 
     def _check_dependencies(self) -> bool:
         """Sensor: Verifies HTTP and parsing libraries are available."""
@@ -44,7 +44,7 @@ class WebScraper(BaseTool):
 
     def execute(self, url: str) -> str:
         """
-        The extraction pipeline: Request -> Parse -> Strip -> Truncate.
+        The extraction pipeline: Request -> Parse -> Smart Extraction -> Truncate.
         """
         import requests
         from bs4 import BeautifulSoup
@@ -58,21 +58,25 @@ class WebScraper(BaseTool):
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
 
-            # The Filter: Load the HTML into BeautifulSoup
+            # Load the HTML into BeautifulSoup
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Annihilate the structural garbage (scripts, styles, headers, footers)
-            for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
-                element.decompose()
+            # SMART EXTRACTION: Only grab semantic content tags. 
+            # This ignores weird nested spans, hidden UI text, and broken CSS remnants.
+            content_tags = soup.find_all(['h1', 'h2', 'h3', 'p', 'li'])
+            
+            extracted_text = []
+            for tag in content_tags:
+                tag_text = tag.get_text(separator=' ', strip=True)
+                if tag_text:
+                    extracted_text.append(tag_text)
 
-            # Extract pure text with line breaks
-            text = soup.get_text(separator='\n', strip=True)
+            # Join it all together cleanly
+            text = '\n\n'.join(extracted_text)
 
-            # Clean up massive gaps of whitespace left by deleted elements
-            text = re.sub(r'\n\s*\n', '\n\n', text)
-
+            # Truncate to the new, safer max limit
             if len(text) > self.max_chars:
-                return text[:self.max_chars] + f"\n\n...[SYSTEM WARNING: Webpage truncated at {self.max_chars} chars.]"
+                return text[:self.max_chars] + f"\n\n...[SYSTEM WARNING: Webpage truncated at {self.max_chars} chars to preserve memory.]"
 
             return text if text else "SYSTEM_ERROR: Page was fetched but no readable text was found."
 
