@@ -28,27 +28,24 @@ class MemoryRouter:
         clean_text = re.sub(r'[^\w\s]', '', prompt.lower())
         return [w for w in clean_text.split() if w not in STOP_WORDS]
 
-    def evaluate_and_fetch(self, prompt: str, threshold: float = -2.0) -> str | None:
+    # FIX: Lowered the threshold to -12.0 to block weak conversational noise
+    def evaluate_and_fetch(self, prompt: str, threshold: float = -12.0) -> str | None:
         """
         Evaluates a prompt for keywords and fetches high-confidence context from ROM.
         Returns the context string if found, or None if fast-fail.
         """
         keywords = self._extract_keywords(prompt)
         
-        # Fast-Fail: No actionable keywords found
         if not keywords:
             self.logger.debug("Router Fast-Fail: No actionable keywords extracted.")
             return None
 
-        # Build FTS5 OR query
         query = " OR ".join(keywords)
         
         try:
-            # Using contextlib/with statement to prevent the Windows file-locking issue we fixed earlier
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # bm25() scores in FTS5 are negative. Lower (more negative) = more relevant.
                 cursor.execute('''
                     SELECT content, rank 
                     FROM chat_search_idx 
@@ -58,14 +55,14 @@ class MemoryRouter:
                 ''', (query,))
                 
                 results = cursor.fetchall()
-                # Print or log this during testing so you aren't guessing
+                
                 for row in results:
                     print(f"DEBUG - Match Score: {row[1]} | Content: {row[0][:30]}...")
                 
                 if not results:
                     return None
                     
-                # Filter out weak matches based on our threshold
+                # FIX: Now correctly filtering out anything weaker than -12.0
                 valid_contexts = [row[0] for row in results if row[1] <= threshold]
                 
                 if valid_contexts:

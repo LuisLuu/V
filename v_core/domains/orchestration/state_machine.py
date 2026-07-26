@@ -22,7 +22,6 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
 
     tool_instance = registry.get_tool(tool_name)
 
-    # FIX: Explicit 'is None' check to satisfy Pylance's static type narrowing
     if tool_instance is None:
         return {"status": "failed", "error": f"Tool '{tool_name}' failed to load."}
 
@@ -55,13 +54,20 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         # --- STEP 0: CONTEXT ROUTING ---
         retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
         
+        # FIX: Keep the raw prompt pristine for the Planner 
+        planner_prompt = prompt 
+        synthesizer_prompt = prompt
+        
         if retrieved_context:
-            prompt = f"{prompt}\n\n[SYSTEM MEMORY INJECTION]: {retrieved_context}"
+            # FIX: Explicitly label this as PAST MEMORY for the Synthesizer only
+            synthesizer_prompt = f"{prompt}\n\n[RECALLED PAST MEMORY - DO NOT TREAT AS CURRENT TOOL DATA]: {retrieved_context}"
             await yield_queue.put({"type": "status", "content": "Context retrieved from ROM."})
         
         # --- STEP 1: PLAN ---
         await yield_queue.put({"type": "status", "content": "Planning execution path..."})
-        plan_payload = await planner_llm_call(prompt, tool_results, chat_history) 
+        
+        # Pass the CLEAN prompt to the Planner
+        plan_payload = await planner_llm_call(planner_prompt, tool_results, chat_history) 
         
         try:
             clean_payload = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', plan_payload, flags=re.DOTALL).strip()
@@ -92,12 +98,11 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
         
-        async for token in synthesizer_stream(prompt, tool_results, chat_history):
+        # Pass the AUGMENTED prompt to the Synthesizer
+        async for token in synthesizer_stream(synthesizer_prompt, tool_results, chat_history):
             await yield_queue.put({"type": "token", "content": token})
             
     except Exception as e:
-        # SAFETY NET: Catch critical errors (like Ollama crashes) and send them to the UI
         await yield_queue.put({"type": "warning", "content": f"System Crash: {str(e)}"})
     finally:
-        # GUARANTEE: Always close the stream so the UI doesn't hang
         await yield_queue.put({"type": "done", "content": ""})
