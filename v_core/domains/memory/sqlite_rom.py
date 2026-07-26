@@ -84,6 +84,7 @@ class SQLiteROM:
                         description TEXT,
                         status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'cancelled')) DEFAULT 'pending',
                         priority TEXT CHECK(priority IN ('low', 'medium', 'high')) DEFAULT 'medium',
+                        deadline TIMESTAMP,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )

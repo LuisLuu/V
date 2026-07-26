@@ -33,10 +33,14 @@ class TaskManagerTool(BaseTool):
                             "type": "string",
                             "description": "Detailed task description (optional)."
                         },
-                        "priority": {
+                       "priority": {
                             "type": "string",
                             "enum": ["low", "medium", "high"],
                             "description": "Task priority level (default: medium)."
+                        },
+                        "deadline": {
+                            "type": "string",
+                            "description": "Optional deadline in ISO 8601 format (e.g., '2026-07-28T17:00:00')."
                         },
                         "task_id": {
                             "type": "integer",
@@ -61,7 +65,8 @@ class TaskManagerTool(BaseTool):
             return self.agent.create_task(
                 title=title,
                 description=kwargs.get("description", ""),
-                priority=kwargs.get("priority", "medium")
+                priority=kwargs.get("priority", "medium"),
+                deadline=kwargs.get("deadline")
             )
         # FIX: Map both 'list' and 'read' to the same function to prevent strict routing failures
         elif action in ["list", "read"]:
