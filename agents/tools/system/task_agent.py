@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Any, List, Optional
-from data.sqlite_rom import SQLiteROM
-
+from memory.sqlite_rom import SQLiteROM
 logger = logging.getLogger("v_core.tools.task_agent")
 
 class TaskAgent:

@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 from agents.orchestration.state_machine import run_cognitive_graph
-from data.sqlite_rom import SQLiteROM
+from memory.sqlite_rom import SQLiteROM
 
 router = APIRouter()
 rom_db = SQLiteROM()

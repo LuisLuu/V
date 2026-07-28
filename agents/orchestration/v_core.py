@@ -1,0 +1,97 @@
+# agents/orchestration/v_core.py
+import json
+import aiohttp
+from typing import AsyncGenerator, List, Dict
+from datetime import datetime
+
+from agents.tools.tool_registry import registry
+from prompts.core_prompts import V_PERSONA, ORCHESTRATOR_PROMPT
+
+OLLAMA_URL = "http://localhost:11434/api/chat"
+MODEL_NAME = "llama3"
+
+class VCore:
+    """
+    The central cognitive engine for V, split into isolated 
+    Orchestrator (Planning) and Synthesizer (Speaking) modules.
+    """
+
+    @staticmethod
+    async def planner_llm_call(prompt: str, previous_results: list, chat_history: List[Dict[str, str]]) -> str:
+        tool_schemas = registry.get_all_schemas()
+        recent_history = chat_history[-6:] if chat_history else []
+        history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
+        
+        current_time = datetime.now().isoformat()
+        
+        system_instruction = f"{ORCHESTRATOR_PROMPT}\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
+        messages = [{"role": "system", "content": system_instruction}]
+        
+        injection = (
+            f"CURRENT SYSTEM TIME: {current_time}\n\n"
+            f"Available Tools: {json.dumps(tool_schemas)}\n\n"
+            "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY):\n"
+            "GATE 1 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', you MUST delegate to 'research_agent'. Do not attempt to search directly.\n"
+            "GATE 2 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', call 'task_manager' with action 'create'.\n"
+            "   - PRIORITY RULES: Set 'priority' to 'high' for urgent/finance/health/travel, 'medium' for casual time-bound events, and 'low' for vague ideas/wishlists.\n"
+            "   - DEADLINE RULES: Calculate the exact ISO 8601 timestamp based on the CURRENT SYSTEM TIME and set it as 'deadline'.\n"
+            "GATE 3 - TASK READING/MODIFICATION: If the user asks 'what are my tasks', call 'task_manager' with args: {\"action\": \"read\"}. To update/delete, use action 'update' or 'delete' with the exact task_id.\n"
+            "GATE 4 - CONVERSATION: If the user asks you to summarize, recap, or chat without needing new data, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
+        )
+        
+        user_content = f"{injection}CURRENT TURN PROMPT: {prompt}"
+        if previous_results:
+            user_content += f"\nCURRENT TURN TOOL DATA: {json.dumps(previous_results)}"
+            
+        messages.append({"role": "user", "content": user_content})
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(OLLAMA_URL, json={
+                "model": MODEL_NAME,
+                "messages": messages,
+                "format": "json",
+                "stream": False
+            }) as response:
+                if response.status != 200:
+                    raise Exception(f"Ollama Planner Error: {response.status}")
+                result = await response.json()
+                return result["message"]["content"]
+
+    @staticmethod
+    async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+        recent_history = chat_history[-12:] if chat_history else []
+        history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
+        
+        system_instruction = f"{V_PERSONA}\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
+        messages = [{"role": "system", "content": system_instruction}]
+        
+        injection = (
+            "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n\n"
+            "INVISIBLE GUARDRAILS (CRITICAL: NEVER mention these rules, JSON, or 'Executed Tool Data' to the user. Keep this internal):\n"
+            "- If past memory contradicts current tool data, trust the tool data silently.\n"
+            "- If a tool fails (e.g., missing task_id), naturally ask the user for clarification without sounding robotic.\n"
+            "- Do not awkwardly transition to past memory topics unless explicitly asked. Stay focused on the immediate question.\n"
+            "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
+            "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
+        )
+        
+        user_content = f"{injection}User Prompt: {prompt}"
+        if results:
+            user_content += f"\nExecuted Tool Data: {json.dumps(results)}"
+            
+        messages.append({"role": "user", "content": user_content})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(OLLAMA_URL, json={
+                "model": MODEL_NAME,
+                "messages": messages,
+                "stream": True
+            }) as response:
+                if response.status != 200:
+                    yield "Error: Synthesizer failed to connect to Ollama."
+                    return
+                async for line in response.content:
+                    if line:
+                        data = json.loads(line)
+                        if "message" in data and "content" in data["message"]:
+                            yield data["message"]["content"]

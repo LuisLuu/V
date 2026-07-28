@@ -1,19 +1,71 @@
-PS D:\project-v> python -m TestKeepSake.test_blast_gate
---- Starting Test 2: Causal Tool & Safety Blast Gate ---
-
-🟢 Phase 1: Executing a Safe Tool...
-Result: Weather is 28°C.
-
-🔴 Phase 2: Executing Dangerous Tool (Simulating User Rejection)...
-
-⚠️  BLAST GATE TRIGGERED: V is attempting to run [wipe_database_records].
-Human-in-the-Loop response: 'n'
-⛔ Action blocked by Human.
-PASS: Handled rejection safely. Message: Execution aborted securely by user.
-
-🟡 Phase 3: Executing Dangerous Tool (Simulating User Approval)...
-
-⚠️  BLAST GATE TRIGGERED: V is attempting to run [wipe_database_records].
-Human-in-the-Loop response: 'y'
-✅ User explicitly approved dangerous action.
-Result: CRITICA
+PS D:\project-v> uvicorn v_backend.main:app --reload
+INFO:     Will watch for changes in these directories: ['D:\\project-v']
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Scripts\uvicorn.exe\__main__.py", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1524, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1445, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 1308, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\click\core.py", line 877, in invoke
+    return callback(*args, **kwargs)
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\main.py", line 441, in main
+    run(
+    ~~~^
+        app,
+        ^^^^
+    ...<48 lines>...
+        reset_contextvars=reset_contextvars,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\main.py", line 609, in run
+    config.load_app()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\config.py", line 415, in load_app
+    return import_from_string(self.app)
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\site-packages\uvicorn\importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+  File "C:\Users\quyen\AppData\Local\Programs\Python\Python314\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1398, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+  File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+  File "D:\project-v\v_backend\main.py", line 6, in <module>
+    from v_backend.routers import event_streams, chat_routes
+  File "D:\project-v\v_backend\routers\event_streams.py", line 5, in <module>
+    from agents.orchestration.state_machine import run_cognitive_graph
+  File "D:\project-v\agents\orchestration\state_machine.py", line 6, in <module>
+    from agents.tools.tool_registry import registry
+  File "D:\project-v\agents\tools\tool_registry.py", line 54, in <module>
+    registry = ToolRegistry()
+  File "D:\project-v\agents\tools\tool_registry.py", line 26, in __init__
+    "task_manager": TaskManagerTool()
+                    ~~~~~~~~~~~~~~~^^
+  File "D:\project-v\agents\tools\system\task_tool.py", line 11, in __init__
+    self.agent = agent if agent else TaskAgent()
+                                     ~~~~~~~~~^^
+  File "D:\project-v\agents\tools\system\task_agent.py", line 12, in __init__
+    self.rom = rom if rom else SQLiteROM()
+                               ~~~~~~~~~^^
+  File "D:\project-v\memory\sqlite_rom.py", line 18, in __init__
+    self._init_db()
+    ~~~~~~~~~~~~~^^
+  File "D:\project-v\memory\sqlite_rom.py", line 26, in _init_db
+    with closing(self._get_connection()) as conn:
+                 ~~~~~~~~~~~~~~~~~~~~^^
+  File "D:\project-v\memory\sqlite_rom.py", line 21, in _get_connection
+    conn = sqlite3.connect(self.db_path)
+sqlite3.OperationalError: unable to open database file
+PS D:\project-v> 

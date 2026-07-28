@@ -4,12 +4,12 @@ import re
 import inspect
 
 from agents.tools.tool_registry import registry
-from agents.orchestration.llm_client import planner_llm_call, synthesizer_stream
+from agents.orchestration.v_core import VCore
 from agents.router import MemoryRouter
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-DB_PATH = BASE_DIR / "data" / "rom.db"
+DB_PATH = BASE_DIR / "memory" / "rom.db"
 
 router = MemoryRouter(db_path=str(DB_PATH))
 
@@ -67,7 +67,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         await yield_queue.put({"type": "status", "content": "Planning execution path..."})
         
         # Pass the CLEAN prompt to the Planner
-        plan_payload = await planner_llm_call(planner_prompt, tool_results, chat_history) 
+        plan_payload = await VCore.planner_llm_call(planner_prompt, tool_results, chat_history)
         
         try:
             clean_payload = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', plan_payload, flags=re.DOTALL).strip()
@@ -99,7 +99,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
         
         # Pass the AUGMENTED prompt to the Synthesizer
-        async for token in synthesizer_stream(synthesizer_prompt, tool_results, chat_history):
+        async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, chat_history):
             await yield_queue.put({"type": "token", "content": token})
             
     except Exception as e:

@@ -27,7 +27,6 @@ class BlastGate:
         
         # 2. The Hard Stop for Write Operations
         if tier == SecurityTier.WRITE:
-            # We intercept the execution and format a warning to the user
             warning_msg = (
                 f"\n⚠️ ACTION REQUIRED: V is attempting to execute a {SecurityTier.WRITE} operation.\n"
                 f"Tool: {tool_name}\n"

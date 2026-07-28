@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, Dict
 from agents.orchestration.state_machine import run_cognitive_graph
-from data.ram_window import RAMWindow
-from data.sqlite_rom import SQLiteROM
+from memory.ram_window import RAMWindow
+from memory.sqlite_rom import SQLiteROM
 from agents.compaction import CompactionEngine
 from agents.tools.system.task_agent import TaskAgent
 

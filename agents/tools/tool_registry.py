@@ -26,6 +26,10 @@ class ToolRegistry:
             "task_manager": TaskManagerTool()
         }
 
+    def register_tool(self, tool_name: str, tool_instance: Any):
+        """Dynamically registers a new tool or sub-agent."""
+        self.tools[tool_name] = tool_instance
+
     def has_tool(self, tool_name: str) -> bool:
         return tool_name in self.tools
 

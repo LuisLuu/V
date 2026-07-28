@@ -10,11 +10,12 @@ logger = logging.getLogger("v_core.memory")
 
 # Match the exact pathing logic from state_machine.py
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-DEFAULT_DB_PATH = str(BASE_DIR / "data" / "rom.db")
+DEFAULT_DB_PATH = str(BASE_DIR / "memory" / "rom.db")
 
 class SQLiteROM:
-    def __init__(self, db_path: str = DEFAULT_DB_PATH):
+    def __init__(self, db_path="memory/rom.db"):
         self.db_path = db_path
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
     def _get_connection(self):
