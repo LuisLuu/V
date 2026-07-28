@@ -9,7 +9,7 @@ import sqlite3
 
 # Import your actual memory modules
 from data.sqlite_rom import SQLiteROM
-from v_core.domains.memory.ram_window import RAMWindow
+from data.ram_window import RAMWindow
 from agents.compaction import CompactionEngine
 from agents.router import MemoryRouter
 
