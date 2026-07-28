@@ -29,7 +29,7 @@ class MemoryRouter:
         return [w for w in clean_text.split() if w not in STOP_WORDS]
 
     # FIX: Lowered the threshold to -12.0 to block weak conversational noise
-    def evaluate_and_fetch(self, prompt: str, threshold: float = -12.0) -> str | None:
+    def evaluate_and_fetch(self, prompt: str, threshold: float = 0.0) -> str | None:
         """
         Evaluates a prompt for keywords and fetches high-confidence context from ROM.
         Returns the context string if found, or None if fast-fail.
@@ -62,14 +62,14 @@ class MemoryRouter:
                 if not results:
                     return None
                     
-                # FIX: Now correctly filtering out anything weaker than -12.0
-                valid_contexts = [row[0] for row in results if row[1] <= threshold]
+                # FIX: Simply filter out any non-matches (score >= 0.0) and trust the LIMIT 3 sorting
+                valid_contexts = [row[0] for row in results if row[1] < threshold]
                 
                 if valid_contexts:
                     self.logger.info(f"Router injected context based on keywords: {keywords}")
                     return "\n---\n".join(valid_contexts)
                 
-                self.logger.debug("Router found matches, but they failed the confidence threshold.")
+                self.logger.debug("Router found matches, but they failed the baseline threshold.")
                 return None
 
         except sqlite3.OperationalError as e:

@@ -1,44 +1,19 @@
-PS D:\project-v> uvicorn v_backend.main:app --reload
-INFO:     Will watch for changes in these directories: ['D:\\project-v']
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [18832] using WatchFiles
-INFO:     Started server process [13748]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:62984 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:62984 - "GET /api/tasks/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56051 - "GET /stream_response?prompt=Hi%20v%2C%20can%20you%20please%20list%20my%20active%20tasks&session_id=desktop_client_1 HTTP/1.1"200 OK
-DEBUG - Match Score: -21.770661706365125 | Content: Hi v, canyou please list my a...
-DEBUG - Match Score: -9.630103495879025 | Content: Hi V, how is it going/ ...
-DEBUG - Match Score: -9.630103495879025 | Content: hi V, how is it going?...
-INFO:     127.0.0.1:56051 - "GET /api/tasks/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:57380 - "GET /stream_response?prompt=Can%20you%20delete%20all%20the%20task%20with%20ID%20X%3F%20&session_id=desktop_client_1 HTTP/1.1"200 OK
-DEBUG - Match Score: -16.42269816289714 | Content: Can you delete all the task wi...
-DEBUG - Match Score: -4.877909186375493 | Content: "Actually, I don't want comple...
-DEBUG - Match Score: -4.696728517340745 | Content: I don't want that completed pu...
-Task update failed: Error binding parameter 2: type 'list' is not supported
-INFO:     127.0.0.1:49968 - "GET /api/tasks/ HTTP/1.1" 200 OK
+PS D:\project-v> python -m TestKeepSake.test_blast_gate
+--- Starting Test 2: Causal Tool & Safety Blast Gate ---
 
-Hi v, can you please list my active tasks
-⚙️ View Process Logs
-> Initializing cognitive routing...
-> Context retrieved from ROM.
-> Planning execution path...
-> Executing task_manager...
-> Tool 'task_manager' complete.
-> Synthesizing final response...
-You're looking for an update on your active tasks. I've got that for you! Currently, you have the following tasks:
+🟢 Phase 1: Executing a Safe Tool...
+Result: Weather is 28°C.
 
-[3] Buy some dark roast coffee beans [4] Pick up dry cleaning [5] Book flight to Tokyo (reminder set for next week) [6] Packing for Singapore trip
+🔴 Phase 2: Executing Dangerous Tool (Simulating User Rejection)...
 
-Let me know if there's anything else I can help you with!
+⚠️  BLAST GATE TRIGGERED: V is attempting to run [wipe_database_records].
+Human-in-the-Loop response: 'n'
+⛔ Action blocked by Human.
+PASS: Handled rejection safely. Message: Execution aborted securely by user.
 
-Can you delete all the task with ID X?
-⚙️ View Process Logs
-> Initializing cognitive routing...
-> Context retrieved from ROM.
-> Planning execution path...
-> Executing task_manager...
-> Tool 'task_manager' complete.
-> Synthesizing final response...
-I'm happy to help you with that! However, I noticed that there was an error in the task ID. Can you please clarify which task ID you're referring to? That way, I can assist you in deleting it accurately.
+🟡 Phase 3: Executing Dangerous Tool (Simulating User Approval)...
+
+⚠️  BLAST GATE TRIGGERED: V is attempting to run [wipe_database_records].
+Human-in-the-Loop response: 'y'
+✅ User explicitly approved dangerous action.
+Result: CRITICA
