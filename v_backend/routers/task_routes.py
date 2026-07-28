@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from v_core.domains.tools.system.task_agent import TaskAgent
+from agents.tools.system.task_agent import TaskAgent
 
 task_router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 agent = TaskAgent()

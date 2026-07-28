@@ -1,6 +1,6 @@
 import os
 from typing import Generator
-from v_core.domains.memory.router import MemoryRouter
+from agents.router import MemoryRouter
 
 # Robust path resolution: Pinpoint 'data/rom.db' relative to this file's location.
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
