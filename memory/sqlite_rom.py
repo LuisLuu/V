@@ -4,21 +4,27 @@ import logging
 from pathlib import Path
 from contextlib import closing
 from typing import List, Dict, Any
+import re
 
-# Configure a localized logger for the memory domain
+# 1. Strictly define the absolute path based on this file's location in the memory folder
+MEMORY_DIR = Path(__file__).resolve().parent
+ABSOLUTE_DB_PATH = str(MEMORY_DIR / "rom.db")
 logger = logging.getLogger("v_core.memory")
 
-# Match the exact pathing logic from state_machine.py
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-DEFAULT_DB_PATH = str(BASE_DIR / "memory" / "rom.db")
-
 class SQLiteROM:
-    def __init__(self, db_path="memory/rom.db"):
-        self.db_path = db_path
+    # 2. Change the signature to capture any passed db_path, but IGNORE IT.
+    def __init__(self, db_path=None): 
+        # Force the absolute path, preventing VCore or other classes from injecting a bad relative path
+        self.db_path = ABSOLUTE_DB_PATH
+        
+        # This will now always safely build the correct memory directory
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
     def _get_connection(self):
+        
+        print(f"\n[CRITICAL DEBUG] Attempting to open DB at: {self.db_path}\n")
+
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
@@ -136,6 +142,10 @@ class SQLiteROM:
 
     def vague_search(self, search_query: str) -> List[Dict[str, Any]]:
         """Executes a full-text semantic-style match against content and tagged categories."""
+        # Strip out any punctuation (like '?' or '!') that breaks FTS5 syntax
+        safe_query = re.sub(r'[^\w\s]', '', search_query).strip()
+        match_str = f"{safe_query}*" if safe_query else "*"
+
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -144,11 +154,11 @@ class SQLiteROM:
                    JOIN chat_logs c ON s.rowid = c.id
                    WHERE s.chat_search_idx MATCH ? 
                    ORDER BY s.rank LIMIT 5""",
-                (f"{search_query}*",)
+                (match_str,)
             )
             results = [dict(row) for row in cursor.fetchall()]
             
-            logger.info(f"[ROM SEARCH] Query: '{search_query}' yielded {len(results)} hits.")
+            logger.info(f"[ROM SEARCH] Query: '{safe_query}' yielded {len(results)} hits.")
             return results
         
     def update_tags(self, row_id: int, tags: str):

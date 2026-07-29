@@ -2,7 +2,7 @@ import requests
 import json
 
 # Adjust the port if your FastAPI server runs on something other than 8000
-API_URL = "http://localhost:8000/api/chat/"API_URL = "http://localhost:8000/api/chat/"
+API_URL = "http://localhost:8000/api/chat/"
 def test_v_flow():
     print("🚀 Sending test message to V...")
     

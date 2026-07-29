@@ -2,6 +2,9 @@ import re
 import sqlite3
 import logging
 
+# 1. Import the centralized absolute path from your new memory module
+from memory.sqlite_rom import ABSOLUTE_DB_PATH
+
 # Standard NLP Stop Words (O(1) lookup time)
 STOP_WORDS = {
     "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", 
@@ -19,8 +22,9 @@ STOP_WORDS = {
 }
 
 class MemoryRouter:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
+    # 2. Make db_path optional to avoid breaking whatever calls it
+    def __init__(self, db_path: str | None = None):
+        self.db_path = ABSOLUTE_DB_PATH
         self.logger = logging.getLogger(__name__)
 
     def _extract_keywords(self, prompt: str) -> list[str]:
