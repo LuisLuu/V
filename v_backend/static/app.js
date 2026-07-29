@@ -36,7 +36,7 @@ function setupVTurn() {
     
     const details = document.createElement('details');
     details.className = 'engine-logs';
-    details.innerHTML = `<summary>⚙️ View Process Logs</summary><div class="log-entries"></div>`;
+    details.innerHTML = `<summary>View Process Logs</summary><div class="log-entries"></div>`;
     
     const textContent = document.createElement('div');
     textContent.className = 'v-text';

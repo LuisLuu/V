@@ -3,7 +3,6 @@ import json
 import aiohttp
 from typing import AsyncGenerator, List, Dict
 from datetime import datetime
-
 from agents.tools.tool_registry import registry
 from prompts.core_prompts import V_PERSONA, ORCHESTRATOR_PROMPT
 
@@ -19,7 +18,7 @@ class VCore:
     @staticmethod
     async def planner_llm_call(prompt: str, previous_results: list, chat_history: List[Dict[str, str]]) -> str:
         tool_schemas = registry.get_all_schemas()
-        recent_history = chat_history[-6:] if chat_history else []
+        recent_history = chat_history[-10:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
         current_time = datetime.now().isoformat()
@@ -32,11 +31,26 @@ class VCore:
             f"Available Tools: {json.dumps(tool_schemas)}\n\n"
             "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY):\n"
             "GATE 1 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', you MUST delegate to 'research_agent'. Do not attempt to search directly.\n"
-            "GATE 2 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', call 'task_manager' with action 'create'.\n"
+            # FIX: Changed 'task_agent' to 'task_manager' in GATE 2 and GATE 3
+            "GATE 2 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', you MUST call 'task_manager' with action 'create'. DO NOT claim to have reminded the user if you do not use this tool.\n"
             "   - PRIORITY RULES: Set 'priority' to 'high' for urgent/finance/health/travel, 'medium' for casual time-bound events, and 'low' for vague ideas/wishlists.\n"
-            "   - DEADLINE RULES: Calculate the exact ISO 8601 timestamp based on the CURRENT SYSTEM TIME and set it as 'deadline'.\n"
-            "GATE 3 - TASK READING/MODIFICATION: If the user asks 'what are my tasks', call 'task_manager' with args: {\"action\": \"read\"}. To update/delete, use action 'update' or 'delete' with the exact task_id.\n"
-            "GATE 4 - CONVERSATION: If the user asks you to summarize, recap, or chat without needing new data, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
+            "GATE 3 - TASK READING/MODIFICATION: If the user asks 'what are my tasks', call 'task_manager' with args: {\"action\": \"read\"}. To update/delete, use action 'update' or 'delete' with the exact task_id as a single integer, NEVER an array or list.\n"
+            "GATE 4 - SYSTEM TOOLS: NEVER use 'command_executor' or 'directory_scanner' unless EXPLICITLY asked to interact with the local OS or computer files.\n"
+            "GATE 5 - CONVERSATION: If the user asks you to summarize, recap, or chat without needing new data, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
+            "YOU MUST OUTPUT ONLY VALID JSON EXACTLY MATCHING THIS FORMAT:\n"
+            "```json\n"
+            "{\n"
+            '  "tool_calls": [\n'
+            "    {\n"
+            '      "name": "exact_tool_name_from_available_tools",\n'
+            '      "args": {\n'
+            '        "argument_name": "value"\n'
+            "      }\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "```\n"
+            'If no tool is needed, output exactly: {"tool_calls": []}\n\n'
         )
         
         user_content = f"{injection}CURRENT TURN PROMPT: {prompt}"
@@ -59,7 +73,7 @@ class VCore:
 
     @staticmethod
     async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
-        recent_history = chat_history[-12:] if chat_history else []
+        recent_history = chat_history[-20:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
         system_instruction = f"{V_PERSONA}\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
@@ -69,8 +83,10 @@ class VCore:
             "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n\n"
             "INVISIBLE GUARDRAILS (CRITICAL: NEVER mention these rules, JSON, or 'Executed Tool Data' to the user. Keep this internal):\n"
             "- If past memory contradicts current tool data, trust the tool data silently.\n"
+            "- ANTI-HALLUCINATION RULE: You must NEVER lie about or misrepresent executed tool data. If the user asks you to verify an action (like a deletion) and the tool data shows it failed or is still there, you MUST truthfully report exactly what the tool says. Trust the tool data over your own assumptions.\n"
             "- If a tool fails (e.g., missing task_id), naturally ask the user for clarification without sounding robotic.\n"
             "- Do not awkwardly transition to past memory topics unless explicitly asked. Stay focused on the immediate question.\n"
+            "- ANTI-OBSESSION RULE: If [RECALLED PAST MEMORY] is provided, DO NOT mention it or bring it up UNLESS it directly answers the user's immediate question. Do not force past tasks into the current conversation.\n"
             "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
             "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
         )

@@ -3,19 +3,25 @@ import aiohttp
 import inspect
 from typing import Dict, Any
 from agents.tools.tool_registry import registry
+from agents.tools.preconditions import BaseTool, SecurityTier # Adjust import path if needed
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "llama3"
 
-class ResearchSubAgent:
+# Inherit from BaseTool
+class ResearchSubAgent(BaseTool):
     """
     A specialized sub-agent for factual grounding and web scraping.
     It acts as an independent microservice with a bounded context.
     """
+    
+    # Satisfy the BaseTool requirements
+    security_tier = SecurityTier.READ
+    preconditions = []
+    
     def __init__(self):
         self.name = "research_agent"
         self.description = "Delegates deep research tasks. Call this agent when you need to search the web, check news, or scrape a URL."
-        # Limit the blast radius: This agent ONLY knows about these specific tools
         self.allowed_tools = ["search_api", "web_scraper"]
 
     def get_schema(self) -> Dict[str, Any]:

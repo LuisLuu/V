@@ -5,8 +5,20 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from v_backend.routers import event_streams, chat_routes 
 from v_backend.routers.task_routes import task_router
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from memory.sqlite_rom import SQLiteROM
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. This runs the moment you type `uvicorn v_backend.main:app --reload`
+    print("🚀 Booting V Backend... Running memory maintenance.")
+    rom = SQLiteROM()
+    rom.prune_old_memories(days=3)
+    
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

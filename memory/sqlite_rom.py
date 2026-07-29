@@ -23,7 +23,7 @@ class SQLiteROM:
 
     def _get_connection(self):
         
-        print(f"\n[CRITICAL DEBUG] Attempting to open DB at: {self.db_path}\n")
+        # print(f"\n[CRITICAL DEBUG] Attempting to open DB at: {self.db_path}\n")
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -172,3 +172,24 @@ class SQLiteROM:
                     (tags, row_id)
                 )
         logger.info(f"[ROM UPDATE] Tags added to RowID: {row_id} | Tags: [{tags}]")
+
+    def prune_old_memories(self, days: int = 3):
+        """
+        Deletes memory rows older than the specified number of days 
+        to prevent database bloat and cognitive overload.
+        """
+        from contextlib import closing
+        
+        with closing(self._get_connection()) as conn:
+            with conn: # This handles the transaction/commit automatically
+                cursor = conn.cursor()
+                
+                # Delete from chat_logs. 
+                # (Note: the FTS5 triggers you set up will automatically handle deleting 
+                # the corresponding rows in chat_search_idx!)
+                cursor.execute(
+                    f"DELETE FROM chat_logs WHERE timestamp < datetime('now', '-{days} days')"
+                )
+                deleted_count = cursor.rowcount
+                
+        logger.info(f"🧹 [ROM MAINTENANCE] Pruned {deleted_count} memories older than {days} days.")
