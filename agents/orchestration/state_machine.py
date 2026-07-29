@@ -57,12 +57,14 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         # --- STEP 0: CONTEXT ROUTING ---
         retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
         
-        # Pass ONLY the raw prompt. VCore will handle all the prompt engineering!
         planner_prompt = prompt
         synthesizer_prompt = prompt
         
         if retrieved_context:
-            synthesizer_prompt += f"\n\n[RECALLED PAST MEMORY - DO NOT TREAT AS CURRENT TOOL DATA]: {retrieved_context}"
+            # FIX: Feed the memory to the Planner so it can make intelligent tool decisions
+            memory_injection = f"\n\n[RECALLED PAST MEMORY]: {retrieved_context}"
+            planner_prompt += memory_injection
+            synthesizer_prompt += memory_injection
             await yield_queue.put({"type": "status", "content": "Context retrieved from ROM."})
         
         # --- STEP 1: PLAN ---
@@ -90,12 +92,29 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
             validated_plan = CognitivePlan(tool_calls=[])
             tool_results.append({"status": "failed", "error": error_msg})
 
-        # --- STEP 2: EXECUTE ---
         if validated_plan.tool_calls:
+            
+            # --- THE CIRCUIT BREAKER ---
+            # Prevent the LLM from panic-spamming tools
+            MAX_TOOLS = 3
+            if len(validated_plan.tool_calls) > MAX_TOOLS:
+                await yield_queue.put({
+                    "type": "warning", 
+                    "content": f"System Overload: Planner requested {len(validated_plan.tool_calls)} tools. Truncating to {MAX_TOOLS}."
+                })
+                validated_plan.tool_calls = validated_plan.tool_calls[:MAX_TOOLS]
+                
             for tool in validated_plan.tool_calls:
-                # tool.name is guaranteed to be a string, tool.args is guaranteed to be a dict
+
+                sanitized_args = {}
+                for key, value in tool.args.items():
+                    if isinstance(value, list) and len(value) == 1:
+                        sanitized_args[key] = value[0] # Extract the single item
+                    else:
+                        sanitized_args[key] = value
+                                
                 await yield_queue.put({"type": "status", "content": f"Executing {tool.name}..."})
-                execution_payload = await execute_tool_async(tool.name, tool.args)
+                execution_payload = await execute_tool_async(tool.name, sanitized_args)
                 tool_results.append(execution_payload)
                 
                 if execution_payload["status"] == "failed":
@@ -103,8 +122,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 elif execution_payload["status"] == "blocked":
                     await yield_queue.put({"type": "warning", "content": f"Blocked: {execution_payload['error']}"})
                 else:
-                    # FIX: Changed tool_name to tool.name to access the Pydantic attribute
-                    await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})   
+                    await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})
 
         # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})

@@ -1,9 +1,10 @@
 import sqlite3
 import json
 import logging
+import contextlib
+
 from pathlib import Path
 from typing import Dict, Any
-from agents.tools.tool_registry import registry
 from agents.tools.preconditions import BaseTool, SecurityTier
 
 # Set up logging for this specific tool
@@ -48,7 +49,8 @@ class TaskManagerTool(BaseTool):
     def execute(self, action: str, title: str | None = None, description: str = "", 
                 status: str | None = None, priority: str | None = None, task_id: int | None = None) -> str:
         try:
-            with sqlite3.connect(DB_PATH) as conn:
+            # closing() guarantees the connection is severed when the block exits
+            with contextlib.closing(sqlite3.connect(DB_PATH)) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
@@ -127,5 +129,3 @@ class TaskManagerTool(BaseTool):
             
         # Catch-all return to completely silence the "must return value on all paths" error
         return json.dumps({"status": "failed", "error": "Unexpected execution path."})
-# Register the tool
-registry.register_tool("task_manager", TaskManagerTool())

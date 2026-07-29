@@ -14,7 +14,9 @@ async def lifespan(app: FastAPI):
     # 1. This runs the moment you type `uvicorn v_backend.main:app --reload`
     print("🚀 Booting V Backend... Running memory maintenance.")
     rom = SQLiteROM()
-    rom.prune_old_memories(days=3)
+    prune_old_memories = getattr(rom, "prune_old_memories", None)
+    if callable(prune_old_memories):
+        prune_old_memories(days=3)
     
     yield
 

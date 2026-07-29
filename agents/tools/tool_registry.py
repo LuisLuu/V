@@ -2,28 +2,25 @@ from typing import Dict, Any, List, Optional
 
 from agents.tools.filesystem.directory_scanner import DirectoryScanner
 from agents.tools.filesystem.file_reader import FileReader
-from agents.tools.iots.universal_iot_bridge import BambuController
 from agents.tools.system.command_executor import CommandExecutor
-from agents.tools.system.task_tool import TaskManagerTool
 from agents.tools.web.web_scraper import WebScraper
 from agents.tools.p_apis.rest_caller import RESTCaller
-from agents.tools.preconditions import BaseTool
 from agents.tools.web.search_api import SearchAPI
+from agents.tools.task_manager import TaskManagerTool
+from agents.tools.preconditions import BaseTool
+from agents.tools.system.bypass_tool import ConversationalBypass
 
 class ToolRegistry:
-    """
-    The central switchboard for V's capabilities.
-    """
     def __init__(self):
         self.tools = {
             "directory_scanner": DirectoryScanner(),
             "file_reader": FileReader(),
-            "universal_iot_bridge": BambuController(),
             "command_executor": CommandExecutor(),
             "search_api": SearchAPI(),             
             "web_scraper": WebScraper(),
             "rest_caller": RESTCaller(),
-            "task_manager": TaskManagerTool()
+            "task_manager": TaskManagerTool(),
+            "conversational_bypass": ConversationalBypass()
         }
 
     def register_tool(self, tool_name: str, tool_instance: Any):
