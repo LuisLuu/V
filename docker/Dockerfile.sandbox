@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+# Create non-root user for execution
+RUN useradd -m -s /bin/bash v_sandbox
+WORKDIR /workspace
+
+# Install common minimal tooling V might need
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+USER v_sandbox
+CMD ["/bin/bash"]
