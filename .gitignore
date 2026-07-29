@@ -1,4 +1,46 @@
-__pycache__
+# ==========================================
+# V - LOCAL AI AGENT GITIGNORE
+# ==========================================
+
+# 1. OS & System Junk (Crucial for your current repo)
+.DS_Store
+.AppleDouble
+.LSOverride
+__MACOSX/
+._*
+Thumbs.db
+
+# 2. Python Caches & Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 3. Environments
+.venv/
+venv/
+env/
+ENV/
+
+# 4. Databases (CRITICAL: Never commit V's memory)
+memory/*.db
+memory/*.sqlite3
 *.db
 *.sqlite
-*.sqlite3
+
+# 5. Logs & Evals (Keep your test outputs out of Git)
+*.log
+evals/*_logs*.txt
+Outputs_logs*.txt
+Test_logs*.txt
+
+# 6. Secrets & Configs
+.env
+.env.*
+*.pem
+
+# 7. IDEs & Editors (VS Code)
+.vscode/
+.idea/
+*.swp
