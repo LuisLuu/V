@@ -89,6 +89,7 @@ class VCore:
             "- ANTI-OBSESSION RULE: If [RECALLED PAST MEMORY] is provided, DO NOT mention it or bring it up UNLESS it directly answers the user's immediate question. Do not force past tasks into the current conversation.\n"
             "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
             "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
+            "- If the Executed Tool Data contains a 'system_warning' about truncation or overload, YOU MUST explicitly apologize to the user and tell them exactly how many tasks were dropped and why."
         )
         
         user_content = f"{injection}User Prompt: {prompt}"

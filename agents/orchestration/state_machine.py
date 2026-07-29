@@ -95,13 +95,14 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         if validated_plan.tool_calls:
             
             # --- THE CIRCUIT BREAKER ---
-            # Prevent the LLM from panic-spamming tools
             MAX_TOOLS = 3
             if len(validated_plan.tool_calls) > MAX_TOOLS:
-                await yield_queue.put({
-                    "type": "warning", 
-                    "content": f"System Overload: Planner requested {len(validated_plan.tool_calls)} tools. Truncating to {MAX_TOOLS}."
-                })
+                warning_msg = f"System Overload: Planner requested {len(validated_plan.tool_calls)} tools. Truncating to {MAX_TOOLS}."
+                await yield_queue.put({"type": "warning", "content": warning_msg})
+                
+                # THE FIX: Tell the Synthesizer about the failure!
+                tool_results.append({"status": "system_warning", "message": warning_msg, "dropped_tasks": len(validated_plan.tool_calls) - MAX_TOOLS})
+                
                 validated_plan.tool_calls = validated_plan.tool_calls[:MAX_TOOLS]
                 
             for tool in validated_plan.tool_calls:
