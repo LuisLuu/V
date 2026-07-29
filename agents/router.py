@@ -33,10 +33,10 @@ class MemoryRouter:
         return [w for w in clean_text.split() if w not in STOP_WORDS]
 
     # FIX: Lowered the threshold to -12.0 to block weak conversational noise
-    def evaluate_and_fetch(self, prompt: str, threshold: float = -12.0) -> str | None:
+    def evaluate_and_fetch(self, prompt: str, dropoff_tolerance: float = 0.5) -> str | None:
         """
-        Evaluates a prompt for keywords and fetches high-confidence context from ROM.
-        Returns the context string if found, or None if fast-fail.
+        Evaluates a prompt and fetches high-confidence context using dynamic relative thresholding.
+        Instead of a magic number, it establishes a baseline from the best match.
         """
         keywords = self._extract_keywords(prompt)
         
@@ -50,6 +50,7 @@ class MemoryRouter:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # FTS5 ranks are negative; more negative is better.
                 cursor.execute('''
                     SELECT content, rank 
                     FROM chat_search_idx 
@@ -60,25 +61,25 @@ class MemoryRouter:
                 
                 results = cursor.fetchall()
                 
-                for row in results:
-                    print(f"DEBUG - Match Score: {row[1]} | Content: {row[0][:30]}...")
-                
                 if not results:
                     return None
-                    
-                # FIX: Simply filter out any non-matches (score >= 0.0) and trust the LIMIT 3 sorting
-                valid_contexts = [row[0] for row in results if row[1] < threshold]
+
+                # 1. Establish the baseline from the top hit
+                best_score = results[0][1]
+                
+                # 2. Calculate the dynamic cliff (e.g., 50% worse than the best score)
+                # Since scores are negative, multiplying by 0.5 moves it closer to 0 (worse)
+                dynamic_threshold = best_score * dropoff_tolerance
+                
+                # 3. Filter using the dynamic threshold
+                valid_contexts = [row[0] for row in results if row[1] <= dynamic_threshold]
                 
                 if valid_contexts:
-                    self.logger.info(f"Router injected context based on keywords: {keywords}")
+                    self.logger.info(f"Router injected context based on keywords: {keywords} (Best Score: {best_score:.2f})")
                     return "\n---\n".join(valid_contexts)
                 
-                self.logger.debug("Router found matches, but they failed the baseline threshold.")
                 return None
 
         except sqlite3.OperationalError as e:
             self.logger.error(f"FTS5 Query Error (Likely bad keyword syntax): {e}")
-            return None
-        except Exception as e:
-            self.logger.error(f"Unexpected Router Error: {e}")
             return None

@@ -1,84 +1,67 @@
-import os
 import sys
+import os
 
-# Define a custom exception for when the user rejects an action
-class BlastGateException(Exception):
-    pass
+# Dynamically append the project root to the system path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-class MockToolRegistry:
-    """Simulates the Tool Registry where V registers its capabilities."""
-    def __init__(self):
-        self.tools = {
-            "fetch_weather": {
-                "requires_approval": False, 
-                "action": lambda: "Weather is 28°C."
-            },
-            "wipe_database_records": {
-                "requires_approval": True, 
-                "action": lambda: "CRITICAL: All database records permanently deleted."
-            }
-        }
+import subprocess
+from agents.tools.preconditions import SecurityTier
+from agents.harness.blast_gates import BlastGate
+import agents.harness.sensors as sensors
 
-class ToolExecutor:
-    """Simulates the engine that runs tools requested by the LLM."""
-    def __init__(self, registry):
-        self.registry = registry
-
-    def execute(self, tool_name, mock_user_input=None):
-        tool = self.registry.tools.get(tool_name)
-        
-        if not tool:
-            return f"Error: Tool '{tool_name}' does not exist."
-            
-        # --- THE BLAST GATE ---
-        if tool["requires_approval"]:
-            print(f"\n⚠️  BLAST GATE TRIGGERED: V is attempting to run [{tool_name}].")
-            
-            # In a real environment, this waits for GUI/CLI input
-            # Here we use mock_user_input to automate the test
-            user_decision = mock_user_input or "n"
-            print(f"Human-in-the-Loop response: '{user_decision}'")
-            
-            if user_decision.lower() != 'y':
-                print("⛔ Action blocked by Human.")
-                raise BlastGateException("Execution aborted securely by user.")
-                
-            print("✅ User explicitly approved dangerous action.")
-            
-        # Execute the actual tool if safe or approved
-        return tool["action"]()
-
-def run_test():
-    print("--- Starting Test 2: Causal Tool & Safety Blast Gate ---")
+def run_harness_tests():
+    print("--- Starting Harness Validation Matrix ---")
+    gate = BlastGate()
     
-    registry = MockToolRegistry()
-    executor = ToolExecutor(registry)
+    # ---------------------------------------------------------
+    # PHASE 1: SENSOR TELEMETRY TESTS
+    # ---------------------------------------------------------
+    print("\n🟢 Phase 1: Testing Environmental Sensors...")
     
-    # Phase 1: Safe Tool Execution
-    print("\n🟢 Phase 1: Executing a Safe Tool...")
-    result = executor.execute("fetch_weather")
-    print(f"Result: {result}")
-    assert result == "Weather is 28°C.", "FAIL: Safe tool did not execute."
-    
-    # Phase 2: Dangerous Tool Execution (User Rejects)
-    print("\n🔴 Phase 2: Executing Dangerous Tool (Simulating User Rejection)...")
-    try:
-        executor.execute("wipe_database_records", mock_user_input="n")
-        assert False, "FAIL: The blast gate failed to block the action!"
-    except BlastGateException as e:
-        print(f"PASS: Handled rejection safely. Message: {e}")
-        
-    # Phase 3: Dangerous Tool Execution (User Approves)
-    print("\n🟡 Phase 3: Executing Dangerous Tool (Simulating User Approval)...")
-    try:
-        result = executor.execute("wipe_database_records", mock_user_input="y")
-        print(f"Result: {result}")
-        assert "CRITICAL" in result, "FAIL: Action did not run after approval."
-        print("PASS: Handled approval correctly.")
-    except BlastGateException:
-        assert False, "FAIL: Blast gate blocked action despite user approval."
+    os_check = sensors.os_is_supported()
+    print(f"OS Supported: {os_check}")
+    assert os_check is True, "FAIL: OS sensor failed to recognize a valid environment."
 
-    print("\n🎉 ALL TESTS PASSED: Blast Gate architecture is secure.")
+    docker_check = sensors.docker_is_running()
+    print(f"Docker Running: {docker_check}")
+    # We don't fail the assert here because Docker might legitimately be off on your test machine,
+    # but we need to ensure the sensor returns a clean boolean and doesn't crash.
+    assert isinstance(docker_check, bool), "FAIL: Docker sensor did not return a boolean."
+
+    # ---------------------------------------------------------
+    # PHASE 2: BLAST GATE ROUTING TESTS
+    # ---------------------------------------------------------
+    print("\n🟢 Phase 2: Testing READ (Autonomous) Gate...")
+    read_payload = gate.evaluate_execution("file_reader", SecurityTier.READ, {"file": "log.txt"})
+    print(f"Payload: {read_payload}")
+    assert read_payload["approved"] is True, "FAIL: READ operation was blocked."
+    assert read_payload["status"] == "AUTO_APPROVED", "FAIL: Incorrect status string."
+
+    print("\n🟡 Phase 3: Testing WRITE (Logged/HITL) Gate...")
+    # Default behavior should block and request HITL
+    write_payload = gate.evaluate_execution("task_manager", SecurityTier.WRITE, {"task_id": "123"})
+    print(f"Payload: {write_payload}")
+    assert write_payload["approved"] is False, "FAIL: WRITE operation auto-approved unsafely."
+    assert write_payload["status"] == "HITL_REQUIRED", "FAIL: Did not emit HITL state."
+    assert "tool_payload" in write_payload, "FAIL: Missing tool payload for frontend rendering."
+
+    print("\n🔴 Phase 4: Testing DESTRUCTIVE (Hard Stop) Gate...")
+    destruct_payload = gate.evaluate_execution("command_executor", SecurityTier.DESTRUCTIVE, {"command": "rm -rf /"})
+    print(f"Payload: {destruct_payload}")
+    assert destruct_payload["approved"] is False, "FAIL: DESTRUCTIVE operation slipped through!"
+    assert destruct_payload["status"] == "HITL_REQUIRED", "FAIL: Did not emit HITL state."
+    assert "rm -rf" in destruct_payload["ui_prompt"], "FAIL: UI prompt missing context."
+
+    # ---------------------------------------------------------
+    # PHASE 5: OVERRIDE VULNERABILITY TEST
+    # ---------------------------------------------------------
+    print("\n🔴 Phase 5: Testing DESTRUCTIVE Override Vulnerability...")
+    # Even if we set auto_approve_writes to True, DESTRUCTIVE must still block.
+    gate.auto_approve_writes = True
+    vuln_payload = gate.evaluate_execution("command_executor", SecurityTier.DESTRUCTIVE, {"command": "fdisk"})
+    assert vuln_payload["approved"] is False, "CRITICAL FAIL: DESTRUCTIVE tier was bypassed by auto-write settings!"
+
+    print("\n🎉 ALL TESTS PASSED: The Security Harness is locked down.")
 
 if __name__ == "__main__":
-    run_test()
+    run_harness_tests()

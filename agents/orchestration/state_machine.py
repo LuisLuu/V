@@ -8,6 +8,8 @@ from pathlib import Path
 from agents.tools.tool_registry import registry
 from agents.orchestration.v_core import VCore
 from agents.router import MemoryRouter
+from pydantic import ValidationError
+from agents.orchestration.schemas import CognitivePlan
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DB_PATH = BASE_DIR / "memory" / "rom.db"
@@ -69,22 +71,31 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         plan_payload = await VCore.planner_llm_call(planner_prompt, tool_results, chat_history)
         
         try:
+    # 1. Clean the payload (keep your regex just in case the LLM wraps it in markdown)
             clean_payload = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', plan_payload, flags=re.DOTALL).strip()
-            plan = json.loads(clean_payload)
+            
+            # 2. STRICT VALIDATION: Coerce the string directly into our Pydantic model
+            validated_plan = CognitivePlan.model_validate_json(clean_payload)
+
+        except ValidationError as e:
+            # Pydantic caught a structural error (e.g., missing 'tool_calls' list)
+            error_msg = f"Critical error: Planner output failed schema validation. Details: {str(e)}"
+            await yield_queue.put({"type": "warning", "content": error_msg})
+            validated_plan = CognitivePlan(tool_calls=[])
+            tool_results.append({"status": "failed", "error": error_msg})
         except json.JSONDecodeError:
+            # The LLM output wasn't even JSON
             error_msg = "Critical error: Planner failed to output valid JSON."
             await yield_queue.put({"type": "warning", "content": error_msg})
-            plan = {"tool_calls": []}
+            validated_plan = CognitivePlan(tool_calls=[])
             tool_results.append({"status": "failed", "error": error_msg})
 
         # --- STEP 2: EXECUTE ---
-        if plan.get("tool_calls"):
-            for tool in plan["tool_calls"]:
-                tool_name = tool.get('name')
-                tool_args = tool.get('args', {})
-                
-                await yield_queue.put({"type": "status", "content": f"Executing {tool_name}..."})
-                execution_payload = await execute_tool_async(tool_name, tool_args)
+        if validated_plan.tool_calls:
+            for tool in validated_plan.tool_calls:
+                # tool.name is guaranteed to be a string, tool.args is guaranteed to be a dict
+                await yield_queue.put({"type": "status", "content": f"Executing {tool.name}..."})
+                execution_payload = await execute_tool_async(tool.name, tool.args)
                 tool_results.append(execution_payload)
                 
                 if execution_payload["status"] == "failed":
@@ -92,7 +103,8 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 elif execution_payload["status"] == "blocked":
                     await yield_queue.put({"type": "warning", "content": f"Blocked: {execution_payload['error']}"})
                 else:
-                    await yield_queue.put({"type": "status", "content": f"Tool '{tool_name}' complete."})
+                    # FIX: Changed tool_name to tool.name to access the Pydantic attribute
+                    await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})   
 
         # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})

@@ -104,7 +104,15 @@ class SQLiteROM:
                     BEGIN
                         UPDATE tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                     END;
-                """)            
+                """)           
+
+                cursor.execute("""
+                    CREATE TRIGGER IF NOT EXISTS before_chat_logs_delete 
+                    BEFORE DELETE ON chat_logs BEGIN
+                        INSERT INTO chat_search_idx(chat_search_idx, rowid, content, tags) 
+                        VALUES ('delete', old.id, old.content, old.tags);
+                    END
+                """) 
                 
         logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 
@@ -173,23 +181,27 @@ class SQLiteROM:
                 )
         logger.info(f"[ROM UPDATE] Tags added to RowID: {row_id} | Tags: [{tags}]")
 
-    def prune_old_memories(self, days: int = 3):
+    def enforce_capacity_limit(self, max_rows: int = 10000):
         """
-        Deletes memory rows older than the specified number of days 
-        to prevent database bloat and cognitive overload.
+        Acts as an LRU (Least Recently Used) cache limit rather than a strict chronological wipe.
+        We archive data until it hits a physical ceiling, preventing artificial amnesia.
         """
         from contextlib import closing
         
         with closing(self._get_connection()) as conn:
-            with conn: # This handles the transaction/commit automatically
+            with conn: 
                 cursor = conn.cursor()
                 
-                # Delete from chat_logs. 
-                # (Note: the FTS5 triggers you set up will automatically handle deleting 
-                # the corresponding rows in chat_search_idx!)
+                # Delete oldest rows ONLY if we exceed the physical row threshold
                 cursor.execute(
-                    f"DELETE FROM chat_logs WHERE timestamp < datetime('now', '-{days} days')"
+                    f"""
+                    DELETE FROM chat_logs 
+                    WHERE id NOT IN (
+                        SELECT id FROM chat_logs ORDER BY timestamp DESC LIMIT {max_rows}
+                    )
+                    """
                 )
                 deleted_count = cursor.rowcount
                 
-        logger.info(f"🧹 [ROM MAINTENANCE] Pruned {deleted_count} memories older than {days} days.")
+        if deleted_count > 0:
+            logger.info(f"🧹 [ROM MAINTENANCE] Archived and pruned {deleted_count} oldest rows to maintain {max_rows} limit.")

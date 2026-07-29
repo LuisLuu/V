@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from data.sqlite_rom import SQLiteROM
+from memory.sqlite_rom import SQLiteROM
 
 def bootstrap_database():
     # Define the strict, root-level data vault

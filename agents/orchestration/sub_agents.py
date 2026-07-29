@@ -1,9 +1,12 @@
 import json
+import re
 import aiohttp
 import inspect
 from typing import Dict, Any
 from agents.tools.tool_registry import registry
-from agents.tools.preconditions import BaseTool, SecurityTier # Adjust import path if needed
+from agents.tools.preconditions import BaseTool, SecurityTier
+from pydantic import ValidationError
+from agents.orchestration.schemas import CognitivePlan
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "llama3"
@@ -45,7 +48,6 @@ class ResearchSubAgent(BaseTool):
         """The isolated cognitive loop for the Research Agent."""
         print(f"🕵️‍♂️ [SUB-AGENT] Research Agent activated for: {task_objective}")
         
-        # FIX 1: Fetch all schemas and filter them, avoiding direct method calls on the Tool class
         all_schemas = registry.get_all_schemas()
         tool_schemas = [schema for schema in all_schemas if schema.get("name") in self.allowed_tools]
 
@@ -65,29 +67,36 @@ class ResearchSubAgent(BaseTool):
                 "stream": False
             }) as response:
                 result = await response.json()
-                plan = json.loads(result["message"]["content"])
+                plan_payload = result["message"]["content"]
                 
-        # 3. Execute the delegated tool
+        # 3. STRICT VALIDATION: Coerce the string directly into our Pydantic model
+        try:
+            clean_payload = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', plan_payload, flags=re.DOTALL).strip()
+            validated_plan = CognitivePlan.model_validate_json(clean_payload)
+        except ValidationError as e:
+            # Sub-agent gracefully returns the error instead of crashing the backend
+            return f"Research Sub-Agent failed: Schema validation error - {str(e)}"
+        except json.JSONDecodeError:
+            return "Research Sub-Agent failed: LLM did not output valid JSON."
+                
+        # 4. Execute the delegated tool using type-safe Pydantic objects
         research_data = []
-        for tool in plan.get("tool_calls", []):
-            tool_name = tool.get("name")
-            tool_args = tool.get("args", {})
-            
-            if tool_name in self.allowed_tools:
-                tool_instance = registry.get_tool(tool_name)
-                
-                # FIX 2: Type checker safety guard to ensure tool_instance isn't None
-                if tool_instance is None:
-                    continue
+        if validated_plan.tool_calls:
+            for tool in validated_plan.tool_calls:
+                if tool.name in self.allowed_tools:
+                    tool_instance = registry.get_tool(tool.name)
                     
-                if inspect.iscoroutinefunction(tool_instance.execute):
-                    res = await tool_instance.execute(**tool_args)
-                else:
-                    import asyncio
-                    res = await asyncio.to_thread(tool_instance.execute, **tool_args)
-                research_data.append(res)
+                    if tool_instance is None:
+                        continue
+                        
+                    if inspect.iscoroutinefunction(tool_instance.execute):
+                        res = await tool_instance.execute(**tool.args)
+                    else:
+                        import asyncio
+                        res = await asyncio.to_thread(tool_instance.execute, **tool.args)
+                    research_data.append(res)
                 
-        # 4. Return the raw data to the main Synthesizer
+        # 5. Return the raw data to the main Synthesizer
         return f"Research Sub-Agent Brief: {json.dumps(research_data)}"
 
 # Register the sub-agent into the system as a high-level tool
