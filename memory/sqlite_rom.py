@@ -1,10 +1,13 @@
 import os
 import sqlite3
 import logging
+import bcrypt
+import re
+import uuid
+
 from pathlib import Path
 from contextlib import closing
 from typing import List, Dict, Any
-import re
 
 # 1. Strictly define the absolute path based on this file's location in the memory folder
 MEMORY_DIR = Path(__file__).resolve().parent
@@ -85,6 +88,24 @@ class SQLiteROM:
                 """)
 
                 cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        id TEXT PRIMARY KEY,
+                        title TEXT DEFAULT 'New Chat',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                cursor.execute("""
+                        CREATE TRIGGER IF NOT EXISTS after_sessions_update 
+                        AFTER UPDATE ON sessions 
+                        WHEN old.updated_at = new.updated_at 
+                        BEGIN
+                            UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                        END;
+                    """)
+
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS tasks (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         title TEXT NOT NULL,
@@ -112,7 +133,15 @@ class SQLiteROM:
                         INSERT INTO chat_search_idx(chat_search_idx, rowid, content, tags) 
                         VALUES ('delete', old.id, old.content, old.tags);
                     END
-                """) 
+                """)
+
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS system_auth (
+                        id INTEGER PRIMARY KEY CHECK (id = 1), -- Forces only a single row (the master PIN)
+                        pin_hash TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
         logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 
@@ -205,3 +234,83 @@ class SQLiteROM:
                 
         if deleted_count > 0:
             logger.info(f"🧹 [ROM MAINTENANCE] Archived and pruned {deleted_count} oldest rows to maintain {max_rows} limit.")
+
+    def setup_master_pin(self, raw_pin: str):
+        """Hashes and stores the master PIN. Overwrites if one exists."""
+        salt = bcrypt.gensalt()
+        pin_hash = bcrypt.hashpw(raw_pin.encode('utf-8'), salt).decode('utf-8')
+        
+        with self._get_connection() as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO system_auth (id, pin_hash) VALUES (1, ?)", 
+                    (pin_hash,)
+                )
+        logger.info("Master PIN successfully set/updated.")
+
+    def verify_master_pin(self, raw_pin: str) -> bool:
+        """Checks a provided PIN against the stored hash."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT pin_hash FROM system_auth WHERE id = 1")
+            row = cursor.fetchone()
+            
+        if not row:
+            return False # No PIN set yet
+            
+        stored_hash = row["pin_hash"].encode('utf-8')
+        return bcrypt.checkpw(raw_pin.encode('utf-8'), stored_hash)
+
+    def create_session(self, initial_title: str = "New Chat") -> str:
+        """Generates a unique session ID and registers it in the ROM."""
+        session_id = str(uuid.uuid4())
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO sessions (id, title) VALUES (?, ?)",
+                    (session_id, initial_title)
+                )
+        logger.info(f"[ROM WRITE] Session created: {session_id}")
+        return session_id
+
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """Retrieves all sessions ordered by most recently updated."""
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_session_title(self, session_id: str, new_title: str):
+        """Updates the session title (usually called via background LLM task)."""
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE sessions SET title = ? WHERE id = ?",
+                    (new_title, session_id)
+                )
+        logger.info(f"[ROM UPDATE] Session {session_id} renamed to '{new_title}'")
+
+    def get_session_history(self, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieves the full chronological chat history for the frontend UI."""
+        from contextlib import closing
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            # Fetch oldest to newest for UI rendering
+            cursor.execute(
+                "SELECT role, content FROM chat_logs WHERE session_id = ? ORDER BY timestamp ASC",
+                (session_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_session(self, session_id: str):
+        """Deletes a session and permanently wipes its associated chat logs."""
+        from contextlib import closing
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM chat_logs WHERE session_id = ?", (session_id,))
+                cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        logger.info(f"🧹 [ROM DELETE] Session and logs wiped for: {session_id}")

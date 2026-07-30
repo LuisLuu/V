@@ -4,21 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=2">    <!-- 100% OFFLINE MARKDOWN PARSER -->
+    <script src="/static/marked.min.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Left Pane: Chat -->
+    <!-- SECURITY GATE OVERLAY -->
+    <div id="auth-overlay" class="auth-overlay">
+        <div class="auth-modal">
+            <h2 id="auth-title">V System Locked</h2>
+            <p id="auth-subtitle">Checking system status...</p>
+            <input type="password" id="pin-input" placeholder="Enter Master PIN" autocomplete="new-password">
+            <button id="auth-btn">Unlock</button>
+            <p id="auth-error" class="error-text"></p>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div class="app-container" id="app-container" style="display: none;">
+        
+        <!-- Left Pane: Navigation & History -->
+        <aside class="nav-sidebar">
+            <div class="nav-header">
+                <h2>Sessions</h2>
+                <button id="new-chat-btn" title="New Chat">＋</button>
+            </div>
+            <div class="session-list" id="session-list">
+                <!-- Chat histories will populate here -->
+            </div>
+            <div class="nav-footer">
+                <button id="settings-btn">⚙️ Configuration</button>
+            </div>
+        </aside>
+
+        <!-- Center Pane: Chat -->
         <div class="chat-wrapper">
             <header class="chat-header">
                 <h2>V</h2>
-                <span class="status-indicator" id="global-status">Online</span>
+                <span class="status-indicator" id="global-status">Local & Online</span>
             </header>
             
             <main class="chat-log" id="chat-log">
-                <!-- Messages render here dynamically -->
+                <!-- Welcome Screen -->
+                <div class="welcome-screen" id="welcome-screen">
+                    <h1>Hello!</h1>
+                    <p>What are we building today?</p>
+                </div>
             </main>
             
             <footer class="input-area">
@@ -45,6 +75,6 @@
         </aside>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2"></script>
 </body>
 </html>

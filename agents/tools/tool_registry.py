@@ -6,7 +6,7 @@ from agents.tools.system.command_executor import CommandExecutor
 from agents.tools.web.web_scraper import WebScraper
 from agents.tools.p_apis.rest_caller import RESTCaller
 from agents.tools.web.search_api import SearchAPI
-from agents.tools.task_manager import TaskManagerTool
+from agents.tools.system.task_tool import TaskManagerTool
 from agents.tools.preconditions import BaseTool
 from agents.tools.system.bypass_tool import ConversationalBypass
 
