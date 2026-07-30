@@ -88,7 +88,7 @@ body {
 .input-area { padding: 20px; border-top: 1px solid #E5E7EB; display: flex; gap: 12px; }
 #user-input { flex: 1; padding: 14px; border: 1px solid #D1D5DB; border-radius: 12px; outline: none; font-size: 1rem; }
 #send-btn { padding: 0 24px; background: #3B82F6; color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; }
-
+#stop-btn { padding: 0 24px; background: #EF4444; color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; }
 /* RIGHT PANE: TASK SIDEBAR */
 .task-sidebar { background: #FAFAFA; border-left: 1px solid #E5E7EB; display: flex; flex-direction: column; height: 100vh; }
 .task-header { padding: 20px; border-bottom: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center; background: #FFFFFF; }
@@ -125,3 +125,4 @@ body {
 .dropdown-item:hover { background: #F3F4F6; }
 .dropdown-item.delete-item { color: #EF4444; }
 .dropdown-item.delete-item:hover { background: #FEE2E2; }
+

@@ -1,7 +1,6 @@
 import os
-import uuid
-
-from fastapi import APIRouter, FastAPI
+import aiohttp
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from contextlib import asynccontextmanager

@@ -47,6 +47,7 @@ class SQLiteROM:
                         session_id TEXT NOT NULL,
                         role TEXT NOT NULL,
                         content TEXT NOT NULL,
+                        logs TEXT,
                         tags TEXT DEFAULT '',
                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
@@ -145,19 +146,17 @@ class SQLiteROM:
                 
         logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 
-    def save_message(self, session_id: str, role: str, content: str, tags: str = "") -> int | None:
-        """Persists a single message segment into the long-term memory layer."""
-        with closing(self._get_connection()) as conn:
-            with conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO chat_logs (session_id, role, content, tags) VALUES (?, ?, ?, ?)",
-                    (session_id, role, content, tags)
-                )
-                row_id = cursor.lastrowid
-                
-            logger.info(f"[ROM WRITE] Success. Session: {session_id} | RowID: {row_id} | Tags: [{tags}]")
-            return row_id
+    def save_message(self, session_id: str, role: str, content: str, logs: str | None = None):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Update the INSERT statement to include the 'logs' column
+            cursor.execute('''
+                INSERT INTO chat_logs (session_id, role, content, logs)
+                VALUES (?, ?, ?, ?)
+            ''', (session_id, role, content, logs))
+            
+            conn.commit()
 
     def get_recent_context(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Retrieves chronological exact context for the sliding window."""

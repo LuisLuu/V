@@ -14,6 +14,7 @@ const authError = document.getElementById('auth-error');
 const chatLog = document.getElementById('chat-log');
 const userInput = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
+const stopBtn = document.getElementById('stop-btn');
 const globalStatus = document.getElementById('global-status');
 
 // Task Elements
@@ -247,7 +248,29 @@ async function switchSession(sessionId) {
                 } else {
                     const row = document.createElement('div');
                     row.className = 'message-row v';
-                    row.innerHTML = `<div class="bubble"><div class="v-text">${typeof marked !== 'undefined' ? marked.parse(msg.content) : msg.content}</div></div>`;
+
+                    // Parse stored logs if present, or show default history label
+                    let logEntries = '';
+                    if (msg.logs) {
+                        try {
+                            const parsedLogs = typeof msg.logs === 'string' ? JSON.parse(msg.logs) : msg.logs;
+                            logEntries = parsedLogs.map(l => `<div>> ${l}</div>`).join('');
+                        } catch(e) {
+                            logEntries = `<div>> ${msg.logs}</div>`;
+                        }
+                    } else {
+                        logEntries = `<div>> Process logs archived in ROM.</div>`;
+                    }
+
+                    row.innerHTML = `
+                        <div class="bubble">
+                            <details class="engine-logs">
+                                <summary>View Process Logs</summary>
+                                <div class="log-entries">${logEntries}</div>
+                            </details>
+                            <div class="v-text">${typeof marked !== 'undefined' ? marked.parse(msg.content) : msg.content}</div>
+                        </div>
+                    `;
                     chatLog.appendChild(row);
                 }
             });
@@ -307,8 +330,17 @@ function setupVTurn() {
 function toggleInput(state) {
     isStreaming = !state;
     userInput.disabled = !state;
-    sendBtn.disabled = !state;
-    if (state) userInput.focus();
+    
+    if (state) {
+        // UI is unlocked: Show Send, Hide Stop
+        sendBtn.style.display = 'block';
+        stopBtn.style.display = 'none';
+        userInput.focus();
+    } else {
+        // UI is locked (streaming): Hide Send, Show Stop
+        sendBtn.style.display = 'none';
+        stopBtn.style.display = 'block';
+    }
 }
 
 async function sendQuery(message) {
@@ -332,15 +364,24 @@ async function sendQuery(message) {
     activeEventSource.onmessage = function(event) {
         const data = JSON.parse(event.data);
         
-        if (data.type === "status") {
+       if (data.type === "status") {
             currentLogsDiv.innerHTML += `<div>> ${data.content}</div>`;
+        } else if (data.type === "title_update") {
+            // Catch the background task signal and refresh the sidebar instantly
+            fetchSessions(); 
         } else if (data.type === "token") {
             currentTextDiv.innerHTML += data.content;
         } else if (data.type === "warning") {
             currentLogsDiv.innerHTML += `<div style="color:red;">> Error: ${data.content}</div>`;
         } else if (data.type === "done") {
+            // 1. Reset streaming state
+            isStreaming = false;
+            
+            // 2. Call the CORRECT function name to reload sidebar sessions
+            fetchSessions(); 
+
             activeEventSource.close();
-            activeEventSource = null; // Clean up
+            activeEventSource = null;
             if (typeof marked !== 'undefined') {
                 currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
             }
@@ -360,6 +401,25 @@ async function sendQuery(message) {
 
 sendBtn.addEventListener('click', () => {
     if (userInput.value.trim() !== '') sendQuery(userInput.value);
+});
+
+stopBtn.addEventListener('click', () => {
+    if (activeEventSource) {
+        activeEventSource.close(); // Kill the stream connection
+        activeEventSource = null;
+        
+        // Log the abort into the UI so the user knows it worked
+        if (currentLogsDiv) {
+            currentLogsDiv.innerHTML += `<div style="color:#EF4444;">> [USER OVERRIDE] Generation aborted.</div>`;
+        }
+        
+        // Ensure markdown is parsed for whatever partial text was generated
+        if (currentTextDiv && typeof marked !== 'undefined') {
+            currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
+        }
+        
+        toggleInput(true); // Unlock the UI
+    }
 });
 
 userInput.addEventListener('keypress', (e) => {
