@@ -22,9 +22,12 @@ const taskList = document.getElementById('task-list');
 const refreshBtn = document.getElementById('refresh-tasks-btn');
 const newTaskInput = document.getElementById('new-task-input');
 const addTaskBtn = document.getElementById('add-task-btn');
-
 const sessionList = document.getElementById('session-list');
 const newChatBtn = document.getElementById('new-chat-btn');
+
+const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+const mainAppContainer = document.querySelector('.app-container');
+const currentChatTitle = document.getElementById('current-chat-title');
 
 let currentSessionId = null;
 let chatHistory = []; 
@@ -34,6 +37,10 @@ let isStreaming = false;
 let isSetupMode = false;
 let activeEventSource = null;
 
+
+toggleSidebarBtn.addEventListener('click', () => {
+    mainAppContainer.classList.toggle('sidebar-collapsed');
+});
 /* ==========================================================================
    AUTHENTICATION LOGIC (The Security Gate)
    ========================================================================== */
@@ -125,7 +132,7 @@ async function fetchSessions() {
                 flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
                 color: #1F2937; font-weight: ${session.id === currentSessionId ? '600' : '400'};
             `;
-            titleSpan.onclick = () => switchSession(session.id);
+            titleSpan.onclick = () => switchSession(session.id, session.title || "New Chat");
 
             // Context Menu Button (The "⋮")
             const menuBtn = document.createElement('button');
@@ -216,8 +223,7 @@ async function createNewSession() {
     }
 }
 
-async function switchSession(sessionId) {
-    // 1. Intercept and Abort Logic
+async function switchSession(sessionId, sessionTitle = "V") {    // 1. Intercept and Abort Logic
     if (isStreaming) {
         const confirmSwitch = confirm("V is currently responding. Switching sessions will abort the current response. Continue?");
         if (confirmSwitch) {
@@ -233,8 +239,10 @@ async function switchSession(sessionId) {
     }
 
     currentSessionId = sessionId;
+    currentChatTitle.innerText = sessionTitle; 
+
     chatLog.innerHTML = ''; 
-    fetchSessions(); 
+    fetchSessions();
 
     try {
         const res = await fetch(`/api/sessions/${sessionId}/messages`);

@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V Assistant</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2">    <!-- 100% OFFLINE MARKDOWN PARSER -->
+    <link rel="stylesheet" href="/static/styles.css?v=3">
+    <!-- 100% OFFLINE MARKDOWN PARSER -->
     <script src="/static/marked.min.js"></script>
 </head>
 <body>
@@ -19,10 +20,10 @@
         </div>
     </div>
 
-    <!-- MAIN APP CONTAINER -->
+    <!-- MAIN APP CONTAINER (3-Column Grid) -->
     <div class="app-container" id="app-container" style="display: none;">
         
-        <!-- Left Pane: Navigation & History -->
+        <!-- Column 1: Left Pane (Nav Sidebar) -->
         <aside class="nav-sidebar">
             <div class="nav-header">
                 <h2>Sessions</h2>
@@ -36,11 +37,15 @@
             </div>
         </aside>
 
-        <!-- Center Pane: Chat -->
+        <!-- Column 2: Center Pane (Chat) -->
         <div class="chat-wrapper">
             <header class="chat-header">
-                <h2>V</h2>
-                <span class="status-indicator" id="global-status">Local & Online</span>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button id="toggle-sidebar-btn" style="background: none; border: none; cursor: pointer; font-size: 1.2rem; color: #6B7280;">☰</button>
+                    <h2 id="current-chat-title" style="margin: 0; color: #111827;">V</h2>
+                </div>
+                <!-- Clean Green Status Dot -->
+                <div class="status-indicator" id="global-status" title="System Online"></div>
             </header>
             
             <main class="chat-log" id="chat-log">
@@ -56,12 +61,9 @@
                 <button id="send-btn">Send</button>
                 <button id="stop-btn" style="display: none;">Stop</button>
             </footer>
-                
-
-
         </div>
 
-        <!-- Right Pane: Task Ledger -->
+        <!-- Column 3: Right Pane (Task Sidebar) -->
         <aside class="task-sidebar">
             <header class="task-header">
                 <h2>System Tasks</h2>
@@ -74,11 +76,12 @@
             </div>
 
             <div class="task-list" id="task-list">
-                <!-- Task items render here dynamically -->
+                <!-- System Tasks populate here -->
             </div>
         </aside>
+
     </div>
 
-    <script src="/static/app.js?v=2"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>

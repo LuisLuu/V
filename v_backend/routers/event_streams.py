@@ -5,11 +5,12 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from sse_starlette.sse import EventSourceResponse
 from agents.orchestration.state_machine import run_cognitive_graph
 from memory.sqlite_rom import SQLiteROM
+from typing import Optional
 
 router = APIRouter()
 rom_db = SQLiteROM()
 
-async def generate_session_title(session_id: str, first_prompt: str, queue: asyncio.Queue = None):
+async def generate_session_title(session_id: str, first_prompt: str, queue: Optional[asyncio.Queue] = None):
     """Background task to generate and save a session title, then notify frontend."""
     
     system_instruction = (
