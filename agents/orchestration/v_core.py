@@ -31,8 +31,8 @@ class VCore:
             f"Available Tools: {json.dumps(tool_schemas)}\n\n"
             "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY):\n"
             "GATE 1 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', you MUST delegate to 'research_agent'. Do not attempt to search directly.\n"
-            # FIX: Changed 'task_agent' to 'task_manager' in GATE 2 and GATE 3
             "GATE 2 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', you MUST call 'task_manager' with action 'create'.\n"
+            "   - PRONOUN RESOLUTION RULE: You MUST resolve all vague references (e.g., 'that topic', 'it', 'him') using conversation history. The task description must be explicitly self-contained (e.g., change 'buy a book on that topic' to 'Buy a book on the Seven Wonders').\n"
             "   - ANTI-DUPLICATION RULE: If the user asks 'Did you add X?' or 'Is X on my list?', you MUST USE action 'read'. NEVER use action 'create' to verify a task.\n"
             "GATE 3 - TASK MANAGEMENT: \n"
             "   - To read active tasks: Call 'task_manager' with action 'read' and filter_status 'pending'.\n"

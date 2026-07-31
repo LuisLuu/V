@@ -354,7 +354,7 @@ function toggleInput(state) {
 async function sendQuery(message) {
     if (!message.trim()) return;
     
-    // Fail-safe: Auto-create a session if the user just starts typing
+    // Auto-create session if none exists
     if (!currentSessionId) {
         await createNewSession();
     }
@@ -364,9 +364,13 @@ async function sendQuery(message) {
     setupVTurn();
     toggleInput(false); 
 
-    const encodedMsg = encodeURIComponent(message);
+    // --- INJECT UNIFIED PERSONAL CONTEXT ---
+    const userContext = localStorage.getItem('v_user_context') || 'None provided.';
+    const contextInjectedMessage = `[System Context: ${userContext}]\n\nUser Query: ${message}`;
     
-    // Now using the dynamic DB session ID instead of the hardcoded ghost ID
+    // Declared exactly ONCE!
+    const encodedMsg = encodeURIComponent(contextInjectedMessage);
+    
     activeEventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&session_id=${currentSessionId}`);
     
     activeEventSource.onmessage = function(event) {
@@ -375,19 +379,14 @@ async function sendQuery(message) {
        if (data.type === "status") {
             currentLogsDiv.innerHTML += `<div>> ${data.content}</div>`;
         } else if (data.type === "title_update") {
-            // Catch the background task signal and refresh the sidebar instantly
             fetchSessions(); 
         } else if (data.type === "token") {
             currentTextDiv.innerHTML += data.content;
         } else if (data.type === "warning") {
             currentLogsDiv.innerHTML += `<div style="color:red;">> Error: ${data.content}</div>`;
         } else if (data.type === "done") {
-            // 1. Reset streaming state
             isStreaming = false;
-            
-            // 2. Call the CORRECT function name to reload sidebar sessions
             fetchSessions(); 
-
             activeEventSource.close();
             activeEventSource = null;
             if (typeof marked !== 'undefined') {
@@ -401,11 +400,11 @@ async function sendQuery(message) {
 
     activeEventSource.onerror = function() {
         activeEventSource.close();
-        activeEventSource = null; // Clean up
+        activeEventSource = null; 
         currentLogsDiv.innerHTML += `<div style="color:red;">> Connection Error.</div>`;
         toggleInput(true);
     };
-}       
+}
 
 sendBtn.addEventListener('click', () => {
     if (userInput.value.trim() !== '') sendQuery(userInput.value);
@@ -443,32 +442,42 @@ async function fetchTasks() {
         if (!response.ok) throw new Error("Failed to fetch tasks");
         
         const tasks = await response.json();
-        taskList.innerHTML = ''; 
+        const activeContainer = document.getElementById('active-tasks-list');
+        const completedContainer = document.getElementById('completed-tasks-list');
         
-        const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
-
-        if (activeTasks.length === 0) {
-            taskList.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No active tasks.</div>';
+        activeContainer.innerHTML = ''; 
+        completedContainer.innerHTML = '';
+        
+        if (tasks.length === 0) {
+            activeContainer.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No tasks available.</div>';
             return;
         }
 
-        activeTasks.forEach(task => {
+        tasks.forEach(task => {
+            const isCompleted = task.status === 'completed';
             const card = document.createElement('div');
             card.className = 'task-card';
+            card.style.opacity = isCompleted ? '0.6' : '1';
+            
             card.innerHTML = `
-                <input type="checkbox" class="task-checkbox" onchange="toggleTaskStatus(${task.id}, this.checked)">
-                <div class="task-details">
+                <input type="checkbox" class="task-checkbox" ${isCompleted ? 'checked' : ''} onchange="toggleTaskStatus(${task.id}, this.checked)">
+                <div class="task-details" style="${isCompleted ? 'text-decoration: line-through;' : ''}">
                     <span class="task-title">${task.title}</span>
                     <span class="task-meta">
                         <span class="priority-${task.priority}">${task.priority}</span> | ${task.status.replace('_', ' ')}
                     </span>
                 </div>
             `;
-            taskList.appendChild(card);
+            
+            if (isCompleted) {
+                completedContainer.appendChild(card);
+            } else {
+                activeContainer.appendChild(card);
+            }
         });
     } catch (error) {
         console.error("Task Fetch Error:", error);
-        taskList.innerHTML = '<div style="color: #EF4444; text-align: center; padding: 20px;">Failed to load tasks. Check DB schema.</div>';
+        document.getElementById('active-tasks-list').innerHTML = '<div style="color: #EF4444; text-align: center; padding: 20px;">Failed to load tasks.</div>';
     }
 }
 
@@ -510,3 +519,29 @@ newTaskInput.addEventListener('keypress', (e) => {
 
 // Initialize Security Gate
 window.addEventListener('load', checkAuthStatus);
+
+// Toggle Modal
+document.getElementById('settings-btn').addEventListener('click', () => {
+    const modal = document.getElementById('settings-modal');
+    modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+    
+    // Load existing unified context into input
+    document.getElementById('user-context-input').value = localStorage.getItem('v_user_context') || '';
+});
+
+// Save to LocalStorage
+function saveSettings() {
+    const context = document.getElementById('user-context-input').value;
+    localStorage.setItem('v_user_context', context);
+    document.getElementById('settings-modal').style.display = 'none';
+}
+
+document.getElementById('exit-btn').addEventListener('click', () => {
+    if (confirm("Are you sure you want to shut down V and terminate the server?")) {
+        // Fire and forget: We don't 'await' because the server is about to die
+        fetch('/api/shutdown', { method: 'POST' }).catch(e => console.log("Server terminated."));
+        
+        // Immediately update the UI
+        document.body.innerHTML = "<h1 style='text-align:center; margin-top:20%; color:#111827; font-family:sans-serif;'>V has been shut down safely. You may close this tab.</h1>";
+    }
+});

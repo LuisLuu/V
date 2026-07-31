@@ -1,5 +1,8 @@
 import os
-import aiohttp
+import signal
+import threading
+import time
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -65,6 +68,17 @@ async def delete_session_route(session_id: str):
     db.delete_session(session_id)
     return {"status": "success"}
 
+@app.post("/api/shutdown")
+async def shutdown_server():
+    """Forces the Uvicorn server to shut down immediately."""
+    print("🛑 [SYSTEM] Shutdown signal received. Terminating V...")
+    
+    def kill_it():
+        time.sleep(0.5) # Give the server half a second to respond to the browser
+        os._exit(0)     # Hard kill the Python process
+        
+    threading.Thread(target=kill_it).start()
+    return {"status": "shutting down"}
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
