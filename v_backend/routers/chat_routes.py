@@ -56,7 +56,7 @@ class ChatPayload(BaseModel):
 def get_or_create_session(session_id: str) -> RAMWindow:
     """Retrieves an active RAM window, or builds one from ROM if it's missing."""
     if session_id not in active_sessions:
-        new_window = RAMWindow(capacity=10)
+        new_window = RAMWindow(max_chars=4000)
         past_context = rom_db.get_recent_context(session_id, limit=5)
         
         for msg in past_context:
@@ -103,7 +103,7 @@ async def talk_to_v(payload: ChatPayload, bg_tasks: BackgroundTasks):
         # 4. Trigger Background Compaction if Critical
         if ram.is_critical:
             # Instantly remove the oldest 4 messages from active RAM
-            stale_messages = ram.extract_for_compaction(count=4)
+            stale_messages = ram.extract_for_compaction()
             # Send them to the background queue so the API can return immediately
             bg_tasks.add_task(compaction_engine.compact_messages, stale_messages)
             print(f"[SYSTEM] Offloaded {len(stale_messages)} messages to background compaction.")
