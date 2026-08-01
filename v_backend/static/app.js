@@ -485,25 +485,24 @@ async function fetchTasks() {
         
         const tasks = await response.json();
         const activeContainer = document.getElementById('active-tasks-list');
-        const completedContainer = document.getElementById('completed-tasks-list');
         
         activeContainer.innerHTML = ''; 
-        completedContainer.innerHTML = '';
         
-        if (tasks.length === 0) {
-            activeContainer.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No tasks available.</div>';
+        // Filter out completed tasks so the sidebar only processes active ones
+        const activeTasks = tasks.filter(task => task.status !== 'completed');
+        
+        if (activeTasks.length === 0) {
+            activeContainer.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No pending tasks.</div>';
             return;
         }
 
-        tasks.forEach(task => {
-            const isCompleted = task.status === 'completed';
+        activeTasks.forEach(task => {
             const card = document.createElement('div');
             card.className = 'task-card';
-            card.style.opacity = isCompleted ? '0.6' : '1';
             
             card.innerHTML = `
-                <input type="checkbox" class="task-checkbox" ${isCompleted ? 'checked' : ''} onchange="toggleTaskStatus(${task.id}, this.checked)">
-                <div class="task-details" style="${isCompleted ? 'text-decoration: line-through;' : ''}">
+                <input type="checkbox" class="task-checkbox" onchange="toggleTaskStatus(${task.id}, this.checked)">
+                <div class="task-details">
                     <span class="task-title">${task.title}</span>
                     <span class="task-meta">
                         <span class="priority-${task.priority}">${task.priority}</span> | ${task.status.replace('_', ' ')}
@@ -511,11 +510,7 @@ async function fetchTasks() {
                 </div>
             `;
             
-            if (isCompleted) {
-                completedContainer.appendChild(card);
-            } else {
-                activeContainer.appendChild(card);
-            }
+            activeContainer.appendChild(card);
         });
     } catch (error) {
         console.error("Task Fetch Error:", error);
@@ -562,15 +557,6 @@ newTaskInput.addEventListener('keypress', (e) => {
 // Initialize Security Gate
 window.addEventListener('load', checkAuthStatus);
 
-// Toggle Modal
-document.getElementById('settings-btn').addEventListener('click', () => {
-    const modal = document.getElementById('settings-modal');
-    modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
-    
-    // Load existing unified context into input
-    document.getElementById('user-context-input').value = localStorage.getItem('v_user_context') || '';
-});
-
 // Save to LocalStorage
 function saveSettings() {
     const context = document.getElementById('user-context-input').value;
@@ -578,12 +564,140 @@ function saveSettings() {
     document.getElementById('settings-modal').style.display = 'none';
 }
 
+// --- VIEW ROUTING LOGIC ---
+const settingsView = document.getElementById('settings-view');
+const mainAppView = document.getElementById('app-container');
+const contextInput = document.getElementById('user-context-input');
+
+// Open Settings
+document.getElementById('settings-btn').addEventListener('click', () => {
+    mainAppView.style.display = 'none';
+    settingsView.style.display = 'block';
+    
+    // Load existing context
+    contextInput.value = localStorage.getItem('v_user_context') || '';
+});
+
+// Close Settings
+document.getElementById('close-settings-btn').addEventListener('click', () => {
+    settingsView.style.display = 'none';
+    mainAppView.style.display = 'grid'; // Restore the 3-column grid
+});
+
+// Save Context
+document.getElementById('save-settings-btn').addEventListener('click', () => {
+    localStorage.setItem('v_user_context', contextInput.value);
+    
+    // Provide brief visual feedback
+    const btn = document.getElementById('save-settings-btn');
+    const originalText = btn.innerText;
+    btn.innerText = '✓ Saved';
+    btn.style.backgroundColor = '#10B981';
+    setTimeout(() => {
+        btn.innerText = originalText;
+        btn.style.backgroundColor = ''; // Reverts to CSS default
+    }, 1500);
+});
+
+// Safe Shutdown
 document.getElementById('exit-btn').addEventListener('click', () => {
-    if (confirm("Are you sure you want to shut down V and terminate the server?")) {
-        // Fire and forget: We don't 'await' because the server is about to die
-        fetch('/api/shutdown', { method: 'POST' }).catch(e => console.log("Server terminated."));
-        
-        // Immediately update the UI
-        document.body.innerHTML = "<h1 style='text-align:center; margin-top:20%; color:#111827; font-family:sans-serif;'>V has been shut down safely. You may close this tab.</h1>";
+    if (confirm("Are you sure you want to trigger a system shutdown?")) {
+        fetch('/api/shutdown', { method: 'POST' }).catch(e => console.log("Server offline."));
+        document.body.innerHTML = `
+            <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
+                <h1 style="color: #374151; font-family: sans-serif;">V Engine Terminated. Safe to close tab.</h1>
+            </div>`;
     }
 });
+
+// --- COLLAPSIBLE TASKS LOGIC ---
+const toggleBtn = document.getElementById('toggle-completed-btn');
+const completedList = document.getElementById('completed-tasks-list');
+
+if (toggleBtn && completedList) {
+    toggleBtn.addEventListener('click', () => {
+        completedList.classList.toggle('hidden');
+        if (completedList.classList.contains('hidden')) {
+            toggleBtn.innerText = '▶ Show Completed Tasks';
+        } else {
+            toggleBtn.innerText = '▼ Hide Completed Tasks';
+        }
+    });
+}
+
+// --- TASK ARCHIVE LOGIC ---
+const viewArchiveBtn = document.getElementById('view-archive-btn');
+const archiveContainer = document.getElementById('archive-list-container');
+
+async function loadArchive() {
+    viewArchiveBtn.innerText = 'Loading...';
+    try {
+        // Fetch strictly completed tasks
+        const response = await fetch('/api/tasks/?status=completed');
+        if (!response.ok) throw new Error("Failed to fetch archive");
+        
+        const tasks = await response.json();
+        archiveContainer.innerHTML = '';
+
+        if (tasks.length === 0) {
+            archiveContainer.innerHTML = '<div style="color: #9CA3AF; text-align: center; padding: 10px;">No completed tasks found.</div>';
+        } else {
+            tasks.forEach(task => {
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                card.style.opacity = '0.7'; // Dimmed for archive
+                
+                card.innerHTML = `
+                    <input type="checkbox" class="task-checkbox" checked onchange="restoreTask(${task.id}, this.checked)">
+                    <div class="task-details" style="text-decoration: line-through;">
+                        <span class="task-title">${task.title}</span>
+                        <span class="task-meta">
+                            <span class="priority-${task.priority}">${task.priority}</span> | ARCHIVED
+                        </span>
+                    </div>
+                `;
+                archiveContainer.appendChild(card);
+            });
+        }
+        
+        archiveContainer.style.display = 'flex';
+        viewArchiveBtn.innerText = 'Hide Archive';
+        viewArchiveBtn.classList.replace('btn-primary', 'btn-secondary');
+
+    } catch (error) {
+        console.error("Archive Fetch Error:", error);
+        archiveContainer.innerHTML = '<div style="color: #EF4444; text-align: center;">Failed to load archive.</div>';
+        archiveContainer.style.display = 'flex';
+        viewArchiveBtn.innerText = 'Hide Archive';
+    }
+}
+
+// Toggle Archive Visibility
+viewArchiveBtn.addEventListener('click', () => {
+    if (archiveContainer.style.display === 'flex') {
+        archiveContainer.style.display = 'none';
+        viewArchiveBtn.innerText = 'Load Archive';
+        viewArchiveBtn.classList.replace('btn-secondary', 'btn-primary');
+    } else {
+        loadArchive();
+    }
+});
+
+// Restore Task to Pending
+async function restoreTask(taskId, isChecked) {
+    // If user unchecks the box, status becomes 'pending'
+    const newStatus = isChecked ? 'completed' : 'pending';
+    try {
+        await fetch(`/api/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        
+        // Refresh both the main sidebar and the archive view to keep states synced
+        fetchTasks(); 
+        loadArchive();
+    } catch (error) {
+        console.error("Failed to restore task:", error);
+    }
+}

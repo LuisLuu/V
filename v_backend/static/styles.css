@@ -147,3 +147,108 @@ body {
 .dropdown-item:hover { background: #F3F4F6; }
 .dropdown-item.delete-item { color: #EF4444; }
 .dropdown-item.delete-item:hover { background: #FEE2E2; }
+
+/* --- SETTINGS VIEW --- */
+.settings-view {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #F9FAFB;
+    overflow-y: auto;
+    z-index: 50; /* Sits above the grid but below Auth overlay */
+}
+
+.settings-header {
+    background: #FFFFFF;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+}
+
+.settings-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #111827;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    color: #6B7280;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.back-btn:hover {
+    background: #F3F4F6;
+    color: #374151;
+}
+
+.settings-content {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.config-section {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.config-section h3 {
+    margin: 0 0 5px 0;
+    color: #1F2937;
+}
+
+.config-desc {
+    font-size: 0.85rem;
+    color: #6B7280;
+    margin-bottom: 15px;
+}
+
+#user-context-input {
+    width: 100%;
+    min-height: 150px;
+    padding: 12px;
+    border: 1px solid #D1D5DB;
+    border-radius: 8px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 15px;
+}
+
+/* Button Classes */
+.btn-primary {
+    background: #3B82F6; color: white;
+    border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+    font-weight: 500; transition: all 0.2s;
+}
+.btn-primary:hover { background: #2563EB; }
+
+.btn-secondary {
+    background: #F3F4F6; color: #374151;
+    border: 1px solid #D1D5DB; padding: 10px 20px; border-radius: 6px; cursor: not-allowed;
+    font-weight: 500;
+}
+
+.btn-danger {
+    background: #FEF2F2; color: #DC2626;
+    border: 1px solid #FECACA; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+    font-weight: 600; transition: all 0.2s;
+}
+.btn-danger:hover { background: #FEE2E2; }
+
+.danger-zone {
+    border-color: #FECACA;
+}

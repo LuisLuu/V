@@ -45,46 +45,63 @@ class TaskAgent:
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
 
-    def update_task(self, task_id: int, status: str) -> Dict[str, Any]:
-        """Modifies a task's state and forces a timestamp refresh."""
+    def update_task(self, status: str, task_id: Optional[int] = None, title: Optional[str] = None) -> Dict[str, Any]:
+        """Modifies a task's state and forces a timestamp refresh using either ID or title."""
         valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled']
         if status not in valid_statuses:
             return {"status": "error", "message": f"Invalid state. Must be one of {valid_statuses}."}
             
+        if not task_id and not title:
+            return {"status": "error", "message": "Must provide either task_id or title to update."}
+
         try:
             with self.rom._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (status, task_id)
-                )
+                if task_id is not None:
+                    cursor.execute(
+                        "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (status, task_id)
+                    )
+                else:
+                    # Fuzzy match fallback
+                    cursor.execute(
+                        "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE title LIKE ?",
+                        (status, f"%{title}%")
+                    )
                 affected = cursor.rowcount
                 conn.commit()
                 
             if affected == 0:
-                return {"status": "error", "message": f"Task ID {task_id} missing or deleted."}
+                return {"status": "error", "message": "Task missing or deleted."}
                 
-            logger.info(f"Task [{task_id}] updated to {status}.")
-            return {"status": "success", "message": f"Task {task_id} successfully marked as {status}."}
+            logger.info(f"Task updated to {status}.")
+            return {"status": "success", "message": f"Task successfully marked as {status}."}
         except Exception as e:
             logger.error(f"Task update failed: {e}")
             return {"status": "error", "message": str(e)}
 
-    # FIX: Added the missing delete functionality
-    def delete_task(self, task_id: int) -> Dict[str, Any]:
-        """Permanently removes a task from the ROM."""
+    def delete_task(self, task_id: Optional[int] = None, title: Optional[str] = None) -> Dict[str, Any]:
+        """Permanently removes a task from the ROM using either ID or title."""
+        if not task_id and not title:
+            return {"status": "error", "message": "Must provide either task_id or title to delete."}
+
         try:
             with self.rom._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                if task_id is not None:
+                    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                else:
+                    # Fuzzy match fallback
+                    cursor.execute("DELETE FROM tasks WHERE title LIKE ?", (f"%{title}%",))
+                
                 affected = cursor.rowcount
                 conn.commit()
                 
             if affected == 0:
-                return {"status": "error", "message": f"Task ID {task_id} missing or already deleted."}
+                return {"status": "error", "message": "Task missing or already deleted."}
                 
-            logger.info(f"Task [{task_id}] deleted.")
-            return {"status": "success", "message": f"Task {task_id} successfully deleted."}
+            logger.info("Task deleted.")
+            return {"status": "success", "message": "Task successfully deleted."}
         except Exception as e:
             logger.error(f"Task deletion failed: {e}")
             return {"status": "error", "message": str(e)}

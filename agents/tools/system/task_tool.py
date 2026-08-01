@@ -77,15 +77,19 @@ class TaskManagerTool(BaseTool):
             return self.agent.list_tasks(status_filter=kwargs.get("status"))
         elif action == "update":
             task_id = kwargs.get("task_id")
+            title = kwargs.get("title")
             status = kwargs.get("status")
-            if task_id is None or status is None:
-                return {"status": "error", "message": "'task_id' and 'status' are required for 'update'."}
-            return self.agent.update_task(task_id=task_id, status=status)
-        # FIX: Execute the new delete logic
+            if status is None:
+                return {"status": "error", "message": "'status' is required for 'update'."}
+            if task_id is None and title is None:
+                return {"status": "error", "message": "Either 'task_id' or 'title' is required to update."}
+            
+            return self.agent.update_task(status=status, task_id=task_id, title=title)
+
         elif action == "delete":
             task_id = kwargs.get("task_id")
-            if task_id is None:
-                return {"status": "error", "message": "'task_id' is required for 'delete'."}
-            return self.agent.delete_task(task_id=task_id)
-        else:
-            return {"status": "error", "message": f"Unknown action '{action}'."}
+            title = kwargs.get("title")
+            if task_id is None and title is None:
+                return {"status": "error", "message": "Either 'task_id' or 'title' is required for 'delete'."}
+            
+            return self.agent.delete_task(task_id=task_id, title=title)

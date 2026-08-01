@@ -32,9 +32,8 @@
             <div class="session-list" id="session-list">
                 <!-- Chat histories will populate here -->
             </div>
-            <div class="nav-footer" style="display: flex; justify-content: space-between;">
-                <button id="settings-btn">⚙️ Config</button>
-                <button id="exit-btn" style="color: #EF4444; background: none; border: none; font-weight: 600; cursor: pointer;">⏏ Exit V</button>
+            <div class="nav-footer" style="padding: 20px; border-top: 1px solid #E5E7EB;">
+                <button id="settings-btn" style="background: transparent; border: none; cursor: pointer; color: #3B82F6; font-weight: 600;">⚙️ Config</button>
             </div>
         </aside>
 
@@ -78,24 +77,47 @@
 
             <div class="task-list" id="task-list" style="display: flex; flex-direction: column; gap: 10px;">
                 <div id="active-tasks-list"></div>
-                <hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 10px 0;">
-                <h3 style="font-size: 0.85rem; color: #6B7280; padding: 0 15px;">Completed Tasks</h3>
-                <div id="completed-tasks-list" style="opacity: 0.6;"></div>
             </div>
         </aside>
 
-        <!-- Hidden Settings Modal -->
-        <div id="settings-modal" style="display: none; position: absolute; bottom: 80px; left: 20px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 100; width: 250px; border: 1px solid #E5E7EB;">
-            <h3 style="margin-bottom: 10px; font-size: 1rem;">Agent Config</h3>
-            
-            <label style="font-size: 0.8rem; color: #6B7280;">Personal Context & Instructions:</label>
-            <textarea id="user-context-input" placeholder="e.g. I am an IT student. Keep answers brief and direct..." style="width: 100%; padding: 8px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #D1D5DB; resize: vertical; height: 100px;"></textarea>
-            
-            <button onclick="saveSettings()" style="width: 100%; padding: 8px; background: #3B82F6; color: white; border: none; border-radius: 6px; cursor: pointer;">Save</button>
-            <button onclick="document.getElementById('settings-modal').style.display='none'" style="width: 100%; padding: 8px; background: none; color: #6B7280; border: none; cursor: pointer; margin-top: 5px;">Close</button>
-        </div>
+        
     </div>
+    <!-- FULL SCREEN SETTINGS VIEW -->
+    <div id="settings-view" class="settings-view" style="display: none;">
+        <header class="settings-header">
+            <button id="close-settings-btn" class="back-btn">← Back to Workspace</button>
+            <h2>System Configuration</h2>
+        </header>
+        
+        <main class="settings-content">
+            <!-- Context Configuration -->
+            <section class="config-section">
+                <h3>Behavioral Context</h3>
+                <p class="config-desc">Define operational parameters and background context for V.</p>
+                <textarea id="user-context-input" placeholder="e.g. Keep answers brief and direct. Evaluate ideas critically against scientific understanding..." autocomplete="off"></textarea>
+                <button id="save-settings-btn" class="btn-primary">Save Configuration</button>
+            </section>
 
+            <!-- Task Archive -->
+            <section class="config-section">
+                <h3>Task Archive</h3>
+                <p class="config-desc">Historical record of completed system tasks.</p>
+                <button id="view-archive-btn" class="btn-primary">Load Archive</button>
+                
+                <!-- Hidden container for the fetched tasks -->
+                <div id="archive-list-container" style="display: none; margin-top: 15px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #E5E7EB; padding-top: 15px;">
+                    <!-- Archived tasks will render here -->
+                </div>
+            </section>
+
+            <!-- Danger Zone -->
+            <section class="config-section danger-zone">
+                <h3 style="color: #EF4444;">System Power</h3>
+                <p class="config-desc">Terminate the local server and safely shut down the V engine.</p>
+                <button id="exit-btn" class="btn-danger">⏏ Terminate V</button>
+            </section>
+        </main>
+    </div>
     <script src="/static/app.js?v=3"></script>
 </body>
 </html>
