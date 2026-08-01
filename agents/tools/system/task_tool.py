@@ -21,7 +21,6 @@ class TaskManagerTool(BaseTool):
                     "properties": {
                         "action": {
                             "type": "string",
-                            # FIX: Added 'read' and 'delete' to the allowed actions
                             "enum": ["create", "list", "read", "update", "delete"],
                             "description": "The task action to perform."
                         },
@@ -44,12 +43,17 @@ class TaskManagerTool(BaseTool):
                         },
                         "task_id": {
                             "type": "integer",
-                            "description": "Task ID (required for 'update' or 'delete')."
+                            "description": "Task ID (required for 'update' or 'delete'). If the user refers to a task by name or pronoun (e.g., 'that task'), you MUST deduce the ID by cross-referencing the chat history with the [CURRENT SYSTEM TASKS] list."
                         },
                         "status": {
                             "type": "string",
                             "enum": ["pending", "in_progress", "completed", "cancelled"],
                             "description": "Task status (required for 'update', optional for 'list')."
+                        },
+                        # --- CRITICAL FIX: The Authorization Flag ---
+                        "authorized": {
+                            "type": "boolean",
+                            "description": "Set to true ONLY if the user has explicitly granted permission for this action in the recent chat history. Defaults to false."
                         }
                     },
                     "required": ["action"]

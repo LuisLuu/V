@@ -29,14 +29,15 @@ class CompactionEngine:
         batch_payload = [{"row_id": m["row_id"], "content": m["content"]} for m in valid_messages]
 
         prompt = (
-            "You are a strict data indexing algorithm. Extract 3 to 5 simple, lowercase keywords "
-            "for each input text in the provided batch. "
-            "You must reply ONLY with a valid JSON object containing a 'results' array. "
-            "Each object in the array must have 'row_id' (integer) and 'tags' (an array of strings).\n\n"
-            f"CRITICAL RULE: I am providing exactly {len(valid_messages)} inputs. "
-            f"Your 'results' array MUST contain exactly {len(valid_messages)} objects. Do not skip any row.\n\n"
-            "Example output format:\n"
-            "{\"results\": [{\"row_id\": 1, \"tags\": [\"keyword1\", \"keyword2\"]}, {\"row_id\": 2, \"tags\": [\"keyword3\", \"keyword4\"]}]}\n\n"
+            "You are a strict data indexing and summarization algorithm.\n"
+            "Task 1: Write a concise, 1-2 sentence summary of the overall conversation narrative in this batch.\n"
+            "Task 2: Extract 3 to 5 simple, lowercase keywords for each input text.\n"
+            "You must reply ONLY with a valid JSON object. Format:\n"
+            "{\n"
+            "  \"summary\": \"<insert 1-2 sentence summary here>\",\n"
+            "  \"results\": [{\"row_id\": 1, \"tags\": [\"keyword1\", \"keyword2\"]}]\n"
+            "}\n\n"
+            f"CRITICAL RULE: The 'results' array MUST contain exactly {len(valid_messages)} objects. Do not skip any row.\n\n"
             f"Batch inputs: {json.dumps(batch_payload)}"
         )
 
@@ -66,6 +67,8 @@ class CompactionEngine:
             # 3. Parse the batched response and route to Database
             data = json.loads(clean_response)
             
+            rolling_summary = data.get("summary", "")
+            
             for item in data.get("results", []):
                 row_id = item.get("row_id")
                 raw_tags = item.get("tags", [])
@@ -82,10 +85,15 @@ class CompactionEngine:
                     print(f"✅ [COMPACTION] Row {row_id} updated with tags: [{tags_str}]")
                 else:
                     print(f"⚠️ [COMPACTION] Skipped Row {row_id}: No tags generated.")
+            
+            return rolling_summary
                     
         except json.JSONDecodeError as e:
             print(f"🚨 [LLM ERROR] Batch failed to return valid JSON. Error: {e} | Raw output: {response}")
+            return ""
         except ValueError as ve:
             print(f"🚨 [EXTRACTION ERROR] {ve} | Raw output: {response}")
+            return ""
         except Exception as e:
             print(f"🚨 [FATAL COMPACTION ERROR] Batch processing failed: {e}")
+            return ""

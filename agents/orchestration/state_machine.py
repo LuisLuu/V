@@ -10,6 +10,7 @@ from agents.orchestration.v_core import VCore
 from agents.router import MemoryRouter
 from pydantic import ValidationError
 from agents.orchestration.schemas import CognitivePlan
+from agents.tools.system.task_agent import TaskAgent
 
 # --- NEW: Import and instantiate the Blast Gate ---
 from agents.harness.blast_gates import BlastGate
@@ -19,6 +20,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DB_PATH = BASE_DIR / "memory" / "rom.db"
 
 router = MemoryRouter(db_path=str(DB_PATH))
+
+HIGH_RISK_TOOLS = {"command_executor", "terminal_run"} # Triggers Blast Gate
+SAFE_TOOLS = {"task_manager", "memory_router", "conversational_bypass"} # Auto-approved
+
+def sanitize_history(history: list) -> list:
+    """Non-destructively strips raw tool JSON from the Planner's view of history."""
+    clean = []
+    for msg in history:
+        if msg.get('role') not in ['user', 'assistant']:
+            continue
+        # Strip out the markdown JSON blocks to prevent the LLM from mimicking past tool calls
+        clean_content = re.sub(r'```(?:json)?\n?.*?\n?```', '[Tool Execution Resolved]', msg.get('content', ''), flags=re.DOTALL).strip()
+        if clean_content:
+            clean.append({"role": msg['role'], "content": clean_content})
+    return clean
 
 async def execute_tool_async(tool_name: str, args: dict) -> dict:
     """
@@ -36,16 +52,17 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
     if not tool_instance.verify_preconditions():
         return {"tool": tool_name, "status": "failed", "error": "Causal sensors rejected execution."}
 
-    # 2. Security Tier Check via BlastGate
-    gate_evaluation = security_gate.evaluate_execution(tool_name, tool_instance.security_tier, args)
-    
-    if not gate_evaluation["approved"]:
-        # Pass the exact status ("HITL_REQUIRED" or "BLOCKED") and the UI prompt back to the router
-        return {
-            "tool": tool_name, 
-            "status": gate_evaluation["status"], 
-            "error": gate_evaluation.get("ui_prompt") or gate_evaluation.get("reason")
-        }
+    # ---> THE FIX: Bypass Blast Gate for Safe Tools <---
+    if tool_name not in SAFE_TOOLS:
+        # 2. Security Tier Check via BlastGate
+        gate_evaluation = security_gate.evaluate_execution(tool_name, tool_instance.security_tier, args)
+        
+        if not gate_evaluation["approved"]:
+            return {
+                "tool": tool_name, 
+                "status": gate_evaluation["status"], 
+                "error": gate_evaluation.get("ui_prompt") or gate_evaluation.get("reason")
+            }
 
     try:
         # 3. Execution Sandbox
@@ -66,21 +83,49 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         tool_results = []
         
         # --- STEP 0: CONTEXT ROUTING ---
-        retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
+        retrieved_context = None
+        # Heuristic Bypass: Only run the heavy DB search if prompt has semantic weight
+        if len(prompt.split()) > 3 and len(prompt) > 15:
+            retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
         
         planner_prompt = prompt
         synthesizer_prompt = prompt
         
+        # RESTORED: Inject memory into both prompts if the router found something
         if retrieved_context:
             memory_injection = f"\n\n[RECALLED PAST MEMORY]: {retrieved_context}"
             planner_prompt += memory_injection
             synthesizer_prompt += memory_injection
             await yield_queue.put({"type": "status", "content": "Context retrieved from ROM."})
-        
+            
+        await yield_queue.put({"type": "status", "content": "Syncing Task Ledger..."})
+        try:
+            task_agent = TaskAgent()
+            all_tasks = await asyncio.to_thread(task_agent.list_tasks) 
+            
+            # CRITICAL FIX: Filter out completed tasks so V only sees what needs to be done
+            active_tasks = [t for t in all_tasks if t['status'] in ['pending', 'in_progress']]
+            
+            task_list_str = ""
+            if active_tasks:
+                task_list_str = "\n".join([f"- [ID: {t['id']}] {t['title']} (Status: {t['status']})" for t in active_tasks])
+            else:
+                task_list_str = "No active tasks."
+                
+            state_injection = f"\n\n[CURRENT SYSTEM TASKS]:\n{task_list_str}"
+            state_injection += "\n[CRITICAL RULE]: When asked to update or delete a task without an explicit ID, you must use the chat history to deduce which task the user means, find its ID in the list above, and INCLUDE the integer in your tool call."
+            
+            planner_prompt += state_injection
+            synthesizer_prompt += state_injection
+        except Exception as e:
+            await yield_queue.put({"type": "warning", "content": f"Ledger Sync Failed: {e}"})
+        # --------------------------------------------------------
+
         # --- STEP 1: PLAN ---
         await yield_queue.put({"type": "status", "content": "Planning execution path..."})
         
-        plan_payload = await VCore.planner_llm_call(planner_prompt, tool_results, chat_history)
+        clean_history = sanitize_history(chat_history)
+        plan_payload = await VCore.planner_llm_call(planner_prompt, tool_results, clean_history)
         
         try:
     # 1. Clean the payload (keep your regex just in case the LLM wraps it in markdown)
@@ -128,17 +173,24 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 execution_payload = await execute_tool_async(tool.name, sanitized_args)
                 tool_results.append(execution_payload)
                 
+                if tool.name == "task_manager" and execution_payload["status"] == "success":
+                    await yield_queue.put({"type": "task_update"})
+                                
                 if execution_payload["status"] == "failed":
                     await yield_queue.put({"type": "warning", "content": f"Error: {execution_payload['error']}"})
                 elif execution_payload["status"] == "blocked":
                     await yield_queue.put({"type": "warning", "content": f"Blocked: {execution_payload['error']}"})
+                elif execution_payload["status"] == "HITL_REQUIRED":
+                    await yield_queue.put({"type": "warning", "content": f"Authorization Required: {execution_payload['error']}"})
+                    # CRITICAL FIX: Force the Synthesizer to understand the task is NOT done
+                    synthesizer_prompt += f"\n\n[SYSTEM OVERRIDE]: Tool '{tool.name}' is PENDING. Do NOT claim the task was completed. Relay the authorization request to the user exactly as provided."
                 else:
                     await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})
 
         # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
         
-        async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, chat_history):
+        async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, clean_history):
             await yield_queue.put({"type": "token", "content": token})
             
     except Exception as e:

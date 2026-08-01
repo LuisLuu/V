@@ -387,6 +387,10 @@ async function sendQuery(message) {
                 if (currentTextDiv) {
                     currentTextDiv.innerHTML += msg.content;
                 }
+            // ---> THE FIX: Catch the backend trigger and run fetchTasks() <---
+            } else if (msg.type === "task_update") {
+                fetchTasks();
+            // -----------------------------------------------------------------
             } else if (msg.type === "title_update") {
                 currentChatTitle.innerText = msg.title;
                 fetchSessions(); // Refresh sidebar with new name

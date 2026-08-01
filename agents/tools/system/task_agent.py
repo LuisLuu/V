@@ -31,17 +31,13 @@ class TaskAgent:
         
     def list_tasks(self, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """Queries the active tasks ledger, enforcing priority ordering."""
-        # FIX: explicitly select only what the LLM needs to reduce token bloat
         query = "SELECT id, title, status, priority, deadline FROM tasks"
         params = ()
         
         if status_filter:
             query += " WHERE status = ?"
             params = (status_filter,)
-        else:
-            # FIX: Only return active tasks by default so V isn't reading old completed tasks
-            query += " WHERE status IN ('pending', 'in_progress')"
-            
+                        
         query += " ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, created_at DESC"
             
         with self.rom._get_connection() as conn:
