@@ -11,6 +11,10 @@ from agents.router import MemoryRouter
 from pydantic import ValidationError
 from agents.orchestration.schemas import CognitivePlan
 
+# --- NEW: Import and instantiate the Blast Gate ---
+from agents.harness.blast_gates import BlastGate
+security_gate = BlastGate()
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DB_PATH = BASE_DIR / "memory" / "rom.db"
 
@@ -32,9 +36,16 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
     if not tool_instance.verify_preconditions():
         return {"tool": tool_name, "status": "failed", "error": "Causal sensors rejected execution."}
 
-    # 2. Security Tier Check (Human-in-the-Loop)
-    if tool_instance.security_tier.value == "human_approval":
-        return {"tool": tool_name, "status": "blocked", "error": "DESTRUCTIVE action requires approval."}
+    # 2. Security Tier Check via BlastGate
+    gate_evaluation = security_gate.evaluate_execution(tool_name, tool_instance.security_tier, args)
+    
+    if not gate_evaluation["approved"]:
+        # Pass the exact status ("HITL_REQUIRED" or "BLOCKED") and the UI prompt back to the router
+        return {
+            "tool": tool_name, 
+            "status": gate_evaluation["status"], 
+            "error": gate_evaluation.get("ui_prompt") or gate_evaluation.get("reason")
+        }
 
     try:
         # 3. Execution Sandbox
@@ -61,7 +72,6 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         synthesizer_prompt = prompt
         
         if retrieved_context:
-            # FIX: Feed the memory to the Planner so it can make intelligent tool decisions
             memory_injection = f"\n\n[RECALLED PAST MEMORY]: {retrieved_context}"
             planner_prompt += memory_injection
             synthesizer_prompt += memory_injection

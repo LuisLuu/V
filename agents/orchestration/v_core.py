@@ -1,6 +1,6 @@
-# agents/orchestration/v_core.py
 import json
 import aiohttp
+import asyncio
 from typing import AsyncGenerator, List, Dict
 from datetime import datetime
 from agents.tools.tool_registry import registry
@@ -8,6 +8,8 @@ from prompts.core_prompts import V_PERSONA, ORCHESTRATOR_PROMPT
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "llama3"
+
+ENGINE_TIMEOUT = aiohttp.ClientTimeout(sock_connect=5, sock_read=60)
 
 class VCore:
     """
@@ -63,17 +65,20 @@ class VCore:
             
         messages.append({"role": "user", "content": user_content})
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(OLLAMA_URL, json={
-                "model": MODEL_NAME,
-                "messages": messages,
-                "format": "json",
-                "stream": False
-            }) as response:
-                if response.status != 200:
-                    raise Exception(f"Ollama Planner Error: {response.status}")
-                result = await response.json()
-                return result["message"]["content"]
+        try:
+            async with aiohttp.ClientSession(timeout=ENGINE_TIMEOUT) as session:
+                async with session.post(OLLAMA_URL, json={
+                    "model": MODEL_NAME,
+                    "messages": messages,
+                    "format": "json",
+                    "stream": False
+                }) as response:
+                    if response.status != 200:
+                        raise Exception(f"Ollama Planner Error: {response.status}")
+                    result = await response.json()
+                    return result["message"]["content"]
+        except asyncio.TimeoutError:
+            raise Exception("Local LLM engine connection timed out. Is Ollama running?")
 
     @staticmethod
     async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
@@ -83,6 +88,7 @@ class VCore:
         system_instruction = f"{V_PERSONA}\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
         messages = [{"role": "system", "content": system_instruction}]
         
+        # ... [KEEP YOUR EXISTING INJECTION STRING EXACTLY AS IS] ...
         injection = (
             "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n\n"
             "INVISIBLE GUARDRAILS (CRITICAL: NEVER mention these rules, JSON, or 'Executed Tool Data' to the user. Keep this internal):\n"
@@ -103,17 +109,20 @@ class VCore:
             
         messages.append({"role": "user", "content": user_content})
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(OLLAMA_URL, json={
-                "model": MODEL_NAME,
-                "messages": messages,
-                "stream": True
-            }) as response:
-                if response.status != 200:
-                    yield "Error: Synthesizer failed to connect to Ollama."
-                    return
-                async for line in response.content:
-                    if line:
-                        data = json.loads(line)
-                        if "message" in data and "content" in data["message"]:
-                            yield data["message"]["content"]
+        try:
+            async with aiohttp.ClientSession(timeout=ENGINE_TIMEOUT) as session:
+                async with session.post(OLLAMA_URL, json={
+                    "model": MODEL_NAME,
+                    "messages": messages,
+                    "stream": True
+                }) as response:
+                    if response.status != 200:
+                        yield "Error: Synthesizer failed to connect to Ollama."
+                        return
+                    async for line in response.content:
+                        if line:
+                            data = json.loads(line)
+                            if "message" in data and "content" in data["message"]:
+                                yield data["message"]["content"]
+        except asyncio.TimeoutError:
+            yield "\n\n**[SYSTEM CRASH]** Local LLM engine connection timed out. Please verify Ollama is active."

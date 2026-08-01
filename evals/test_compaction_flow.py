@@ -1,7 +1,7 @@
 import sys
 import os
+import asyncio
 
-# Append project root so Python can find the modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from memory.ram_window import RAMWindow
@@ -9,11 +9,20 @@ from memory.sqlite_rom import SQLiteROM
 from agents.compaction import CompactionEngine
 from agents.router import MemoryRouter
 
-class MockLLM:
-    """Mocks the Ollama client to keep tests fast and isolated."""
+class SabotagedMockLLM:
+    """Mocks a misbehaving Ollama client that wraps JSON in markdown and conversational filler."""
     def generate(self, prompt: str) -> str:
-        # Returns a valid JSON string matching our BatchTagResponse schema
-        return '{"results": [{"row_id": 1, "tags": ["test", "mock", "data"]}]}'
+        return (
+            "Sure thing, V! Here is the extracted data you requested:\n"
+            "```json\n"
+            "{\n"
+            '  "results": [\n'
+            '    {"row_id": 1, "tags": ["calibration", "printer", "enclosure"]}\n'
+            "  ]\n"
+            "}\n"
+            "```\n"
+            "Let me know if you need any other rows compacted!"
+        )
 
 def run_memory_tests():
     print("--- Starting Memory Architecture Validation ---")
@@ -45,7 +54,7 @@ def run_memory_tests():
     # ---------------------------------------------------------
     print("\n🟡 Phase 2: Testing Pydantic Compaction Batch...")
     rom = SQLiteROM()
-    engine = CompactionEngine(rom_connection=rom, llm_client=MockLLM())
+    engine = CompactionEngine(rom_connection=rom, llm_client=SabotagedMockLLM())
     
     # Pass the extracted messages into the mock engine
     engine.compact_messages(extracted)

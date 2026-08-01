@@ -19,8 +19,11 @@ async def generate_session_title(session_id: str, first_prompt: str, queue: Opti
         "no quotes, no conversational filler."
     )
     
+    # Use a faster timeout for the background namer so it fails quietly and quickly
+    FAST_TIMEOUT = aiohttp.ClientTimeout(sock_connect=5, sock_read=15)
+    
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=FAST_TIMEOUT) as session:
             async with session.post("http://localhost:11434/api/chat", json={
                 "model": "llama3", 
                 "messages": [
@@ -47,6 +50,8 @@ async def generate_session_title(session_id: str, first_prompt: str, queue: Opti
         if queue:
             await queue.put({"type": "title_update", "title": clean_title})
             
+    except asyncio.TimeoutError:
+        print(f"[ERROR] Auto-naming timed out for {session_id}. Engine unresponsive.")
     except Exception as e:
         print(f"[ERROR] Auto-naming failed for {session_id}: {e}")
 # -----------------------------------------------------

@@ -1,8 +1,6 @@
 import json
 from typing import List, Dict, Any
 import re
-from pydantic import ValidationError
-from agents.orchestration.schemas import BatchTagResponse
 
 class CompactionEngine:
     """
@@ -43,11 +41,30 @@ class CompactionEngine:
         )
 
         try:
-            # 3. Single API Call handles all messages at once
+            # 2. Single API Call handles all messages at once
             response = self.llm.generate(prompt)
             
-            # 4. Parse the batched response and route to Database
-            data = json.loads(response)
+            # --- NEW: JSON Extraction & Self-Healing ---
+            clean_response = response.strip()
+            
+            # Strip markdown formatting if the LLM includes it
+            if clean_response.startswith("```json"):
+                clean_response = clean_response[7:]
+            elif clean_response.startswith("```"):
+                clean_response = clean_response[3:]
+            if clean_response.endswith("```"):
+                clean_response = clean_response[:-3]
+                
+            # Regex to forcefully isolate the JSON object from conversational filler
+            json_match = re.search(r'\{.*\}', clean_response, re.DOTALL)
+            if not json_match:
+                raise ValueError("No JSON object found in LLM response.")
+                
+            clean_response = json_match.group(0)
+            # -------------------------------------------
+
+            # 3. Parse the batched response and route to Database
+            data = json.loads(clean_response)
             
             for item in data.get("results", []):
                 row_id = item.get("row_id")
@@ -66,7 +83,9 @@ class CompactionEngine:
                 else:
                     print(f"⚠️ [COMPACTION] Skipped Row {row_id}: No tags generated.")
                     
-        except json.JSONDecodeError:
-            print(f"🚨 [LLM ERROR] Batch failed to return valid JSON. Raw output: {response}")
+        except json.JSONDecodeError as e:
+            print(f"🚨 [LLM ERROR] Batch failed to return valid JSON. Error: {e} | Raw output: {response}")
+        except ValueError as ve:
+            print(f"🚨 [EXTRACTION ERROR] {ve} | Raw output: {response}")
         except Exception as e:
             print(f"🚨 [FATAL COMPACTION ERROR] Batch processing failed: {e}")
