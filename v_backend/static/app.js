@@ -364,13 +364,8 @@ async function sendQuery(message) {
     setupVTurn();
     toggleInput(false); 
 
-    // --- INJECT UNIFIED PERSONAL CONTEXT ---
-    const userContext = localStorage.getItem('v_user_context') || 'None provided.';
-    const contextInjectedMessage = `[System Context: ${userContext}]\n\nUser Query: ${message}`;
-    
-    // Declared exactly ONCE!
-    const encodedMsg = encodeURIComponent(contextInjectedMessage);
-    
+    // --- SEND MESSAGE TO BACKEND ---
+    const encodedMsg = encodeURIComponent(message);
     activeEventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&session_id=${currentSessionId}`);
     
     // ---> THE FIX: WE ADDED THE MESSAGE LISTENER HERE <---
@@ -557,12 +552,6 @@ newTaskInput.addEventListener('keypress', (e) => {
 // Initialize Security Gate
 window.addEventListener('load', checkAuthStatus);
 
-// Save to LocalStorage
-function saveSettings() {
-    const context = document.getElementById('user-context-input').value;
-    localStorage.setItem('v_user_context', context);
-    document.getElementById('settings-modal').style.display = 'none';
-}
 
 // --- VIEW ROUTING LOGIC ---
 const settingsView = document.getElementById('settings-view');
@@ -570,12 +559,18 @@ const mainAppView = document.getElementById('app-container');
 const contextInput = document.getElementById('user-context-input');
 
 // Open Settings
-document.getElementById('settings-btn').addEventListener('click', () => {
+document.getElementById('settings-btn').addEventListener('click', async () => {
     mainAppView.style.display = 'none';
     settingsView.style.display = 'block';
     
-    // Load existing context
-    contextInput.value = localStorage.getItem('v_user_context') || '';
+    // Fetch context directly from the ROM Database
+    try {
+        const res = await fetch('/api/settings/context');
+        const data = await res.json();
+        contextInput.value = data.context || '';
+    } catch (e) {
+        console.error("Failed to load context:", e);
+    }
 });
 
 // Close Settings
@@ -585,14 +580,27 @@ document.getElementById('close-settings-btn').addEventListener('click', () => {
 });
 
 // Save Context
-document.getElementById('save-settings-btn').addEventListener('click', () => {
-    localStorage.setItem('v_user_context', contextInput.value);
-    
-    // Provide brief visual feedback
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
     const btn = document.getElementById('save-settings-btn');
     const originalText = btn.innerText;
-    btn.innerText = '✓ Saved';
-    btn.style.backgroundColor = '#10B981';
+    btn.innerText = 'Saving...';
+    
+    try {
+        await fetch('/api/settings/context', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: contextInput.value })
+        });
+        
+        // Visual success feedback
+        btn.innerText = '✓ Saved';
+        btn.style.backgroundColor = '#10B981';
+    } catch (e) {
+        console.error("Failed to save context:", e);
+        btn.innerText = 'X Error';
+        btn.style.backgroundColor = '#EF4444';
+    }
+    
     setTimeout(() => {
         btn.innerText = originalText;
         btn.style.backgroundColor = ''; // Reverts to CSS default
@@ -609,21 +617,6 @@ document.getElementById('exit-btn').addEventListener('click', () => {
             </div>`;
     }
 });
-
-// --- COLLAPSIBLE TASKS LOGIC ---
-const toggleBtn = document.getElementById('toggle-completed-btn');
-const completedList = document.getElementById('completed-tasks-list');
-
-if (toggleBtn && completedList) {
-    toggleBtn.addEventListener('click', () => {
-        completedList.classList.toggle('hidden');
-        if (completedList.classList.contains('hidden')) {
-            toggleBtn.innerText = '▶ Show Completed Tasks';
-        } else {
-            toggleBtn.innerText = '▼ Hide Completed Tasks';
-        }
-    });
-}
 
 // --- TASK ARCHIVE LOGIC ---
 const viewArchiveBtn = document.getElementById('view-archive-btn');

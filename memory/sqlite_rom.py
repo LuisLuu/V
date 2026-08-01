@@ -143,6 +143,15 @@ class SQLiteROM:
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS user_settings (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        context TEXT DEFAULT ''
+                    )
+                """)
+                # Ensure the row exists so we can always UPDATE it
+                cursor.execute("INSERT OR IGNORE INTO user_settings (id, context) VALUES (1, '')")
                 
         logger.info(f"SQLite ROM database initialized at {self.db_path} and schemas verified.")
 
@@ -313,3 +322,19 @@ class SQLiteROM:
                 cursor.execute("DELETE FROM chat_logs WHERE session_id = ?", (session_id,))
                 cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         logger.info(f"🧹 [ROM DELETE] Session and logs wiped for: {session_id}")
+
+    def get_user_context(self) -> str:
+        """Retrieves the global behavioral context and user preferences."""
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT context FROM user_settings WHERE id = 1")
+            row = cursor.fetchone()
+            return row["context"] if row else ""
+
+    def update_user_context(self, context: str):
+        """Overwrites the global user context."""
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("INSERT OR REPLACE INTO user_settings (id, context) VALUES (1, ?)", (context,))
+        logger.info("[ROM UPDATE] User context preferences updated.")

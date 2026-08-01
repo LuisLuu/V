@@ -17,6 +17,9 @@ from memory.sqlite_rom import SQLiteROM
 # Instantiate a global DB connection for our API routes
 db = SQLiteROM()
 
+class ContextUpdate(BaseModel):
+    context: str
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # This runs the moment you type `uvicorn v_backend.main:app --reload`
@@ -85,3 +88,12 @@ async def shutdown_server():
     threading.Thread(target=kill_it).start()
     return {"status": "shutting down"}
 
+@app.get("/api/settings/context")
+async def get_user_context_route():
+    context = db.get_user_context()
+    return {"context": context}
+
+@app.post("/api/settings/context")
+async def update_user_context_route(payload: ContextUpdate):
+    db.update_user_context(payload.context)
+    return {"status": "success"}
