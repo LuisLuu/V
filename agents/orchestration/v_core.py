@@ -108,6 +108,7 @@ class VCore:
             "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
             "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
             "- If the Executed Tool Data contains a 'system_warning' about truncation or overload, YOU MUST explicitly apologize to the user and tell them exactly how many tasks were dropped and why."
+            "- MEMORY AWARENESS: You are fed background context via a 'USER PREFERENCES' database. If the user asks how you know their name or preferences, state that it is saved in your System Configuration / ROM. NEVER invent connections to unrelated tasks to explain your knowledge."
         )
         
         user_content = f"{injection}\nUser Prompt: {prompt}"
