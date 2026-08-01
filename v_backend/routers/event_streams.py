@@ -1,11 +1,12 @@
 import asyncio
 import json
 import aiohttp
+import traceback
 from fastapi import APIRouter, Request, BackgroundTasks
-from sse_starlette.sse import EventSourceResponse
 from agents.orchestration.state_machine import run_cognitive_graph
 from memory.sqlite_rom import SQLiteROM
 from typing import Optional
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 rom_db = SQLiteROM()
@@ -88,8 +89,24 @@ async def stream_response(
                     graph_task.cancel()
                     break
                     
-                msg = await queue.get()
-                yield json.dumps(msg)
+                # THE FIX: Micro-polling to prevent infinite hangs if the graph task dies silently
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    if graph_task.done():
+                        exc = graph_task.exception()
+                        if exc is not None:
+                            raise exc
+                        # If task is done but has no exception, and the queue is empty, exit cleanly.
+                        print("\n[DEBUG] The graph task finished cleanly but the queue is empty. Closing stream.\n")
+                        break 
+                        
+                    # THE FIX: Send an invisible heartbeat ping to keep the browser socket alive
+                    yield ": ping\n\n"
+                    continue
+                    
+                # SSE-Starlette defaults to 'message' events when yielding strings
+                yield f"data: {json.dumps(msg)}\n\n"
                 
                 # Collect status lines as they come in
                 if msg["type"] == "status":
@@ -103,7 +120,33 @@ async def stream_response(
                     # Save both response and serialized logs to ROM
                     rom_db.save_message(session_id, "assistant", v_response, logs=json.dumps(logs))
                     break
+
+        except Exception as e:
+            print("\n[--- INVISIBLE ERROR CAUGHT ---]")
+            traceback.print_exc()  # This prints the raw, bloody error to your console
+            print("[------------------------------]\n")
+            
+            error_msg = str(e)
+            if "timed out" in error_msg.lower():
+                payload = {"error": "Engine timeout: V's cognitive core took too long to respond. The connection was severed to prevent a system hang."}
+            else:
+                payload = {"error": f"System Exception: {error_msg}"}
+            
+            yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+            
         except asyncio.CancelledError:
             pass
-            
-    return EventSourceResponse(event_generator())
+
+        # ---> THIS IS THE MISSING PIECE <---
+    # Return the generator wrapped in a StreamingResponse with the strict MIME type
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )
+
+        
+

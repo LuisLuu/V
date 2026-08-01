@@ -373,39 +373,77 @@ async function sendQuery(message) {
     
     activeEventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&session_id=${currentSessionId}`);
     
+    // ---> THE FIX: WE ADDED THE MESSAGE LISTENER HERE <---
     activeEventSource.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        
-       if (data.type === "status") {
-            currentLogsDiv.innerHTML += `<div>> ${data.content}</div>`;
-        } else if (data.type === "title_update") {
-            fetchSessions(); 
-        } else if (data.type === "token") {
-            currentTextDiv.innerHTML += data.content;
-        } else if (data.type === "warning") {
-            currentLogsDiv.innerHTML += `<div style="color:red;">> Error: ${data.content}</div>`;
-        } else if (data.type === "done") {
-            isStreaming = false;
-            fetchSessions(); 
-            activeEventSource.close();
-            activeEventSource = null;
-            if (typeof marked !== 'undefined') {
-                currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
+        try {
+            // EventSource natively strips the "data: " prefix, leaving pure JSON
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === "status") {
+                if (currentLogsDiv) {
+                    currentLogsDiv.innerHTML += `<div>> ${msg.content}</div>`;
+                }
+            } else if (msg.type === "token") {
+                if (currentTextDiv) {
+                    currentTextDiv.innerHTML += msg.content;
+                }
+            } else if (msg.type === "title_update") {
+                currentChatTitle.innerText = msg.title;
+                fetchSessions(); // Refresh sidebar with new name
+            } else if (msg.type === "done") {
+                // Gracefully kill the stream before the browser auto-reconnects and throws an error
+                activeEventSource.close();
+                activeEventSource = null;
+                
+                // Parse the final markdown
+                if (currentTextDiv && typeof marked !== 'undefined') {
+                    currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
+                }
+                toggleInput(true); // Unlock UI
             }
-            toggleInput(true); 
-            fetchTasks(); 
+        } catch (e) {
+            console.error("Stream Parsing Error:", e);
         }
-        chatLog.scrollTop = chatLog.scrollHeight;
     };
 
+    activeEventSource.addEventListener("error", function(event) {
+        // 1. If there is no data payload, this is a native network drop. 
+        // Let the onerror block handle it!
+        if (!event.data) return; 
+
+        let errorMessage = "System Exception triggered.";
+        try {
+            const data = JSON.parse(event.data);
+            errorMessage = data.error || errorMessage;
+        } catch(e) {}
+        
+        if (currentLogsDiv) {
+            currentLogsDiv.innerHTML += `<div style="color:#EF4444; font-weight:bold;">> [SYSTEM HALT] ${errorMessage}</div>`;
+        }
+        if (currentTextDiv) {
+            currentTextDiv.innerHTML += `<br><br><span style="color:#EF4444; font-weight:bold;">⚠️ ${errorMessage}</span>`;
+        }
+
+        isStreaming = false;
+        if (activeEventSource) {
+            activeEventSource.close();
+            activeEventSource = null;
+        }
+        toggleInput(true); 
+    });
+
+    // The native error handler
     activeEventSource.onerror = function() {
-        activeEventSource.close();
-        activeEventSource = null; 
-        currentLogsDiv.innerHTML += `<div style="color:red;">> Connection Error.</div>`;
+        if (activeEventSource) {
+            activeEventSource.close();
+            activeEventSource = null; 
+        }
+        if (currentLogsDiv) {
+            currentLogsDiv.innerHTML += `<div style="color:red;">> Connection Error.</div>`;
+        }
         toggleInput(true);
     };
 }
-
 sendBtn.addEventListener('click', () => {
     if (userInput.value.trim() !== '') sendQuery(userInput.value);
 });
