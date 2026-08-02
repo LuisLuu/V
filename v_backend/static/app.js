@@ -351,16 +351,26 @@ function toggleInput(state) {
     }
 }
 
-function showAuthModal(commandText, actionId) {
-    // Assuming you have an HTML element with id 'command-auth-modal'
+function showAuthModal(commandText, intentText, actionId) {
     const modal = document.getElementById('command-auth-modal');
     const commandDisplay = document.getElementById('auth-command-display');
+    const intentDisplay = document.getElementById('auth-intent-display'); // Assuming you add this
     const approveBtn = document.getElementById('auth-approve-btn');
     const denyBtn = document.getElementById('auth-deny-btn');
 
-    // Inject the raw command string so you can read exactly what V wants to do
+    // Defensive check: If the modal doesn't exist, log it and abort cleanly
+    if (!modal || !commandDisplay || !approveBtn || !denyBtn) {
+        console.error("Critical UI elements for the Auth Modal are missing from index.html.");
+        return; 
+    }
+
+    // Inject the raw command and the human intent
     commandDisplay.innerText = commandText;
-    modal.style.display = 'flex';
+    if (intentDisplay) {
+        intentDisplay.innerText = intentText || "No intent provided.";
+    }
+    
+    modal.style.display = 'flex'; // This won't crash now!
 
     // Clear old listeners by cloning to prevent multiple triggers
     const newApproveBtn = approveBtn.cloneNode(true);
@@ -368,7 +378,7 @@ function showAuthModal(commandText, actionId) {
     approveBtn.parentNode.replaceChild(newApproveBtn, approveBtn);
     denyBtn.parentNode.replaceChild(newDenyBtn, denyBtn);
 
-    // Wire up the new buttons to your existing submitCommandAuth function
+    // Wire up the new buttons
     newApproveBtn.addEventListener('click', () => submitCommandAuth(actionId, true));
     newDenyBtn.addEventListener('click', () => submitCommandAuth(actionId, false));
 }
@@ -421,13 +431,12 @@ async function sendQuery(message) {
                 }
 
             } else if (msg.type === "auth_request") {
-                // 1. Pause the UI (do not unlock input yet)
                 if (currentLogsDiv) {
                     currentLogsDiv.innerHTML += `<div style="color:#F59E0B; font-weight:bold;">> [SYSTEM PAUSE] Authorization required for command execution.</div>`;
                 }
                 
-                // 2. Trigger the modal (You will need to build this HTML element)
-                showAuthModal(msg.command, msg.action_id);
+                // Pass the command, the intent, and the action ID
+                showAuthModal(msg.command, msg.intent, msg.action_id);
 
             } else if (msg.type === "done") {
                 if (activeEventSource) {

@@ -71,6 +71,11 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
             result = await tool_instance.execute(**args)
         else:
             result = await asyncio.to_thread(tool_instance.execute, **args)
+            
+        # ---> THE UNIVERSAL ERROR CATCHER <---
+        if isinstance(result, dict) and result.get("status") == "error":
+             return {"tool": tool_name, "status": "failed", "error": result.get("message", "Tool execution failed silently.")}
+
         return {"tool": tool_name, "status": "success", "data": result}
     except Exception as e:
         return {"tool": tool_name, "status": "failed", "error": str(e)}
@@ -115,6 +120,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 
             state_injection = f"\n\n[CURRENT SYSTEM TASKS]:\n{task_list_str}"
             state_injection += "\n[CRITICAL RULE]: When asked to update or delete a task without an explicit ID, you must use the chat history to deduce which task the user means, find its ID in the list above, and INCLUDE the integer in your tool call."
+            planner_prompt += "\n[CRITICAL RULE]: If the user asks a general knowledge, research, or comparative question (e.g., hardware differences, definitions), DO NOT use local file system tools. Proceed with an empty tool plan and synthesize the answer from your training data or a web search."
             
             planner_prompt += state_injection
             synthesizer_prompt += state_injection
@@ -164,10 +170,14 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
             for tool in validated_plan.tool_calls:
                 sanitized_args = {}
                 for key, value in tool.args.items():
-                    if isinstance(value, list) and len(value) == 1:
-                        sanitized_args[key] = value[0] 
-                    else:
-                        sanitized_args[key] = value
+                    sanitized_args[key] = value[0] if isinstance(value, list) and len(value) == 1 else value
+                
+                if tool.name == "draft_memory_update":
+                    draft_text = str(sanitized_args).lower()
+                    subjective_words = ["prefers", "likes", "wants", "feels", "loves", "hates", "unorthodox"]
+                    if any(word in draft_text for word in subjective_words):
+                        await yield_queue.put({"type": "warning", "content": "Memory Bank rejected subjective fluff. Bypassing tool."})
+                        continue # Skips the database write entirely
                                 
                 await yield_queue.put({"type": "status", "content": f"Evaluating {tool.name} safety..."})
                 
@@ -216,8 +226,9 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                     await yield_queue.put({"type": "task_update"})
                 
                 if tool.name == "draft_memory_update" and execution_payload["status"] == "success":
-                    # Pushes the drafted memory text directly to the frontend queue
-                    await yield_queue.put({"type": "memory_draft", "content": execution_payload.get("data", "")})
+                    draft_text = execution_payload.get("data", "")
+                    # Just push it straight to the UI queue, no more filtering here!
+                    await yield_queue.put({"type": "memory_draft", "content": draft_text})
                                 
                 # 3. STATUS HANDLING (Process failures, blocks, and UI updates)
                 if execution_payload["status"] == "failed":
@@ -231,8 +242,13 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 else:
                     await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})
 
+        # --- STEP 3: SYNTHESIZE --
+        
+        # 1. Anti-Hallucination Fallback
+        synthesizer_prompt += "\n\n[CRITICAL RULE]: If no explicit URL or search data is provided in the tool execution payload, synthesize a natural conversational response WITHOUT citing any sources or using placeholders like [Source Name] or [insert temp]."
+        
+        synthesizer_prompt += "\n[CRITICAL RULE]: To save a persistent fact about the user or environment, you MUST use the 'draft_memory_update' tool. Do NOT append tags to your conversational response."
 
-        # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
         
         async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, clean_history):
@@ -242,3 +258,4 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
         await yield_queue.put({"type": "warning", "content": f"System Crash: {str(e)}"})
     finally:
         await yield_queue.put({"type": "done", "content": ""})
+        

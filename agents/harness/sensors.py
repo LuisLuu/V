@@ -1,18 +1,22 @@
 # v_core/domains/harness/sensors.py
 import os
-import subprocess
+import socket
 from pathlib import Path
 
 def os_is_supported() -> bool:
     """Sensor: Verifies OS compatibility for bare-metal execution."""
     return os.name in ['nt', 'posix']
 
-def has_internet_connection() -> bool:
-    """Sensor: Fast ping to check external connectivity."""
+def has_internet_connection(host: str = "1.1.1.1", port: int = 53, timeout: float = 0.5) -> bool:
+    """
+    Sensor: Ultra-fast TCP socket check for internet connectivity.
+    Eliminates blocking OS subprocess/ping overhead entirely.
+    """
     try:
-        ping_cmd = ["ping", "-c", "1", "-W", "1", "1.1.1.1"] if os.name == 'posix' else ["ping", "-n", "1", "-w", "1000", "1.1.1.1"]
-        res = subprocess.run(ping_cmd, capture_output=True)
-        return res.returncode == 0
+        socket.setdefaulttimeout(timeout)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+        return True
     except Exception:
         return False
 
@@ -29,7 +33,7 @@ def workspace_is_intact(workspace_path: str = "./v_workspace") -> bool:
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
             
-        # Path Traversal Defense: Catch V if she tries to escape to C:\Windows or ../../
+        # Path Traversal Defense: Catch V if she tries to escape root isolation
         if current_root not in path.parents and path != current_root / "v_workspace":
             print(f"[SECURITY ALERT] Workspace escaped root isolation: {path}")
             return False 

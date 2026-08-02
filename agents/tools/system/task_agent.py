@@ -46,7 +46,7 @@ class TaskAgent:
             return [dict(row) for row in cursor.fetchall()]
 
     def update_task(self, status: str, task_id: Optional[int] = None, title: Optional[str] = None) -> Dict[str, Any]:
-        """Modifies a task's state and forces a timestamp refresh using either ID or title."""
+        """Modifies a task's state safely using either exact ID or constrained title match."""
         valid_statuses = ['pending', 'in_progress', 'completed', 'cancelled']
         if status not in valid_statuses:
             return {"status": "error", "message": f"Invalid state. Must be one of {valid_statuses}."}
@@ -57,22 +57,33 @@ class TaskAgent:
         try:
             with self.rom._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Direct ID target
                 if task_id is not None:
                     cursor.execute(
                         "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                         (status, task_id)
                     )
                 else:
-                    # Fuzzy match fallback
+                    # Safe Title Resolution: Verify matching records first
+                    cursor.execute("SELECT id FROM tasks WHERE title LIKE ?", (f"%{title}%",))
+                    matches = cursor.fetchall()
+                    
+                    if len(matches) == 0:
+                        return {"status": "error", "message": f"No task found matching '{title}'."}
+                    elif len(matches) > 1:
+                        return {
+                            "status": "error", 
+                            "message": f"Multiple tasks match '{title}'. Please specify the exact task_id."
+                        }
+                    
+                    target_id = matches[0]["id"]
                     cursor.execute(
-                        "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE title LIKE ?",
-                        (status, f"%{title}%")
+                        "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (status, target_id)
                     )
-                affected = cursor.rowcount
+
                 conn.commit()
-                
-            if affected == 0:
-                return {"status": "error", "message": "Task missing or deleted."}
                 
             logger.info(f"Task updated to {status}.")
             return {"status": "success", "message": f"Task successfully marked as {status}."}
@@ -81,18 +92,32 @@ class TaskAgent:
             return {"status": "error", "message": str(e)}
 
     def delete_task(self, task_id: Optional[int] = None, title: Optional[str] = None) -> Dict[str, Any]:
-        """Permanently removes a task from the ROM using either ID or title."""
+        """Permanently removes a single task safely using either exact ID or single title match."""
         if not task_id and not title:
             return {"status": "error", "message": "Must provide either task_id or title to delete."}
 
         try:
             with self.rom._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Direct ID target
                 if task_id is not None:
                     cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
                 else:
-                    # Fuzzy match fallback
-                    cursor.execute("DELETE FROM tasks WHERE title LIKE ?", (f"%{title}%",))
+                    # Safe Title Resolution: Verify matching records first
+                    cursor.execute("SELECT id FROM tasks WHERE title LIKE ?", (f"%{title}%",))
+                    matches = cursor.fetchall()
+                    
+                    if len(matches) == 0:
+                        return {"status": "error", "message": f"No task found matching '{title}'."}
+                    elif len(matches) > 1:
+                        return {
+                            "status": "error", 
+                            "message": f"Multiple tasks match '{title}'. Please specify the exact task_id to delete."
+                        }
+                    
+                    target_id = matches[0]["id"]
+                    cursor.execute("DELETE FROM tasks WHERE id = ?", (target_id,))
                 
                 affected = cursor.rowcount
                 conn.commit()

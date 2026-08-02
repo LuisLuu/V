@@ -1,6 +1,8 @@
 import json
 import aiohttp
 import asyncio
+import platform
+
 from typing import AsyncGenerator, List, Dict
 from datetime import datetime
 from agents.tools.tool_registry import registry
@@ -20,23 +22,34 @@ class VCore:
 
     @staticmethod
     async def planner_llm_call(prompt: str, previous_results: list, chat_history: List[Dict[str, str]]) -> str:
-        tool_schemas = registry.get_all_schemas()
+        print("\n[DEBUG] --- ENTERED PLANNER_LLM_CALL ---")
         
-        # 1. Fetch Context & History once
-        user_context = rom_db.get_user_context() # Your manual rules
-        learned_facts = rom_db.get_learned_facts() # V's autonomous memory
+        # --- THE TRAP ---
+        try:
+            tool_schemas = registry.get_all_schemas()
+        except Exception as e:
+            print(f"\n[CRITICAL REGISTRY ERROR]: {str(e)}")
+            raise
+        
+        print("[DEBUG] Fetching context from ROM DB...")
+        # Synchronous SQLite read to prevent cross-thread crashes
+        user_context = rom_db.get_user_context()
+        learned_facts = rom_db.get_learned_facts()
+        print("[DEBUG] ROM fetch complete. Building payload...")
         
         recent_history = chat_history[-10:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
         current_time = datetime.now().isoformat()
+        current_os = platform.system()
         
-        # 2. STRICTLY use the ORCHESTRATOR_PROMPT here, not V_PERSONA
         system_instruction = f"{ORCHESTRATOR_PROMPT}\n\n[SYSTEM ROM: USER PREFERENCES & CONTEXT]:\n{user_context}\n\n[SYSTEM ROM: AUTONOMOUS MEMORY BANK]:\n{learned_facts}\n\n..."
         messages = [{"role": "system", "content": system_instruction}]
         
         injection = (
             f"CURRENT SYSTEM TIME: {current_time}\n\n"
+            f"!!! CRITICAL SYSTEM ARCHITECTURE !!!\n"
+            f"You are operating on a {current_os} machine. If you use Gate 7 (BARE-METAL CODE EXECUTION) or write any scripts, they MUST be strictly compatible with {current_os}. Failure to use native {current_os} commands will crash the system.\n\n"
             f"Available Tools: {json.dumps(tool_schemas)}\n\n"
             "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY IN ORDER):\n"
             "GATE 1 - MEMORY DRAFTING (HIGHEST PRIORITY): If the user shares a personal fact, habit, physical limitation, preference, or explicitly asks you to remember something about them, YOU MUST call the 'draft_memory_update' tool to save it. (e.g., 'I love cold treats', 'I don't have an oven').\n"
@@ -48,7 +61,6 @@ class VCore:
             "GATE 5 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', delegate to 'research_agent'.\n"
             "GATE 6 - CONVERSATION: If the user is just chatting, sharing a story, or making casual conversation. CRITICAL CONSTRAINT: Scan the text first. If the user mentions a persistent personal fact (even casually), YOU MUST route to Gate 1 instead. Otherwise, return an empty array [].\n\n"
             "YOU MUST OUTPUT ONLY VALID JSON EXACTLY MATCHING THIS FORMAT:\n"
-            "GATE 7 - BARE-METAL CODE EXECUTION: If a task requires writing, running, or scripting code locally, you MUST use the strict Two-Tool Protocol. First, use 'workspace_writer' to draft the code file into ./v_workspace. Second, use 'workspace_executor' to run it. NEVER attempt to run code without drafting it first.\n\n"
             "```json\n"
             "{\n"
             '  "tool_calls": [\n'
@@ -70,30 +82,46 @@ class VCore:
             
         messages.append({"role": "user", "content": user_content})
         
+        print(f"\n[DEBUG] Planner payload compiled. Prompt length: {len(user_content)} chars")
+        
         try:
             async with aiohttp.ClientSession(timeout=ENGINE_TIMEOUT) as session:
-                async with session.post(OLLAMA_URL, json={
+                print("[DEBUG] aiohttp session opened. Sending POST to Ollama...")
+                payload = {
                     "model": MODEL_NAME,
                     "messages": messages,
-                    "format": "json",
+                    "format": "json", 
                     "stream": False
-                }) as response:
+                }
+                async with session.post(OLLAMA_URL, json=payload) as response:
+                    print(f"[DEBUG] Ollama responded with status code: {response.status}")
                     if response.status != 200:
                         raise Exception(f"Ollama Planner Error: {response.status}")
                     result = await response.json()
+                    print("[DEBUG] JSON extracted successfully.")
                     return result["message"]["content"]
         except asyncio.TimeoutError:
+            print("[CRITICAL] aiohttp timed out waiting for Ollama.")
             raise Exception("Local LLM engine connection timed out. Is Ollama running?")
+        except Exception as e:
+            print(f"[CRITICAL] Unhandled Exception in Planner: {str(e)}")
+            raise
 
     @staticmethod
     async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
-        # 1. Fetch Context & History once
-        user_context = rom_db.get_user_context() # Your manual rules
-        learned_facts = rom_db.get_learned_facts() # V's autonomous memory
+        print("\n[DEBUG] --- ENTERED SYNTHESIZER_STREAM ---")
+        
+        # --- SQLITE CRASH FIX ---
+        try:
+            user_context = rom_db.get_user_context()
+            learned_facts = rom_db.get_learned_facts()
+        except Exception as e:
+            print(f"\n[CRITICAL ROM ERROR IN SYNTHESIZER]: {str(e)}")
+            raise
+
         recent_history = chat_history[-20:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
-        # 2. Use V_PERSONA for the synthesizer
         system_instruction = f"{ORCHESTRATOR_PROMPT}\n\nUSER PREFERENCES:\n{user_context}\n\nLEARNED FACTS ABOUT USER:\n{learned_facts}\n\n..."
         messages = [{"role": "system", "content": system_instruction}]
         

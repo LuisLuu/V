@@ -50,15 +50,11 @@ async def generate_session_title(session_id: str, first_prompt: str, queue: Opti
                 title = result["message"]["content"]
         
         clean_title = title.strip(' "\'\n')
-        
         # Save to database
         rom_db.update_session_title(session_id, clean_title)
         print(f"[SYSTEM] Session {session_id} auto-named: {clean_title}")
-        
-        # Inject the new title directly into the SSE stream
-        if queue:
-            await queue.put({"type": "title_update", "title": clean_title})
-            
+        return clean_title
+
     except asyncio.TimeoutError:
         print(f"[ERROR] Auto-naming timed out for {session_id}. Engine unresponsive.")
     except Exception as e:
@@ -80,9 +76,9 @@ async def stream_response(
     db_history = rom_db.get_recent_context(session_id, limit=10)
     chat_history = [{"role": msg["role"], "content": msg["content"]} for msg in db_history]
     
-    # Trigger auto-naming if history is empty and pass the queue
-    if not db_history:
-        asyncio.create_task(generate_session_title(session_id, prompt, queue))
+    # # Trigger auto-naming if history is empty and pass the queue
+    # if not db_history:
+    #     asyncio.create_task(generate_session_title(session_id, prompt, queue))
     
     rom_db.save_message(session_id, "user", prompt)
     
@@ -116,34 +112,32 @@ async def stream_response(
 
                 content_str = msg.get("content", "")
                 
-                # Fuzzy match: catches MEMORY_DRAFT with or without underscores/spaces
-                draft_match = re.search(r'(?:__)?MEMORY_DRAFT(?:__)?\s*:\s*(.*)', content_str if isinstance(content_str, str) else "", re.IGNORECASE)
-                
-                if draft_match:
-                    draft_text = draft_match.group(1).strip()
-                    
-                    # Hijack and rewrite the message payload for the frontend
-                    msg = {
-                        "type": "memory_draft",
-                        "content": draft_text
-                    }
-                # ---------------------------------------------
-                    
-                # SSE-Starlette defaults to 'message' events when yielding strings
-                yield f"data: {json.dumps(msg)}\n\n"
-                
-                # Collect status lines as they come in
+                # 1. Collect status lines
                 if msg["type"] == "status":
-                    logs.append(msg.get("content", ""))
+                    logs.append(content_str)
                 
-                # Accumulate tokens for final response
-                if msg["type"] == "token":
-                    v_response += msg.get("content", "")
+                # 2. Accumulate tokens
+                elif msg["type"] == "token":
+                    v_response += content_str
                 
-                if msg["type"] == "done":
-                    # Save both response and serialized logs to ROM
+                # 3. INTERCEPT 'DONE' BEFORE IT SENDS
+                elif msg["type"] == "done":
                     rom_db.save_message(session_id, "assistant", v_response, logs=json.dumps(logs))
+
+                    if not db_history:
+                        new_title = await generate_session_title(session_id, prompt)
+                        if new_title:
+                            title_payload = {"type": "title_update", "title": new_title}
+                            # Send title FIRST
+                            yield f"data: {json.dumps(title_payload)}\n\n"
+                    
+                    # Send 'done' LAST, then break
+                    yield f"data: {json.dumps(msg)}\n\n"
                     break
+
+                # 4. For all other messages, yield normally
+                if msg["type"] != "done":
+                    yield f"data: {json.dumps(msg)}\n\n"
 
         except Exception as e:
             print("\n[--- INVISIBLE ERROR CAUGHT ---]")

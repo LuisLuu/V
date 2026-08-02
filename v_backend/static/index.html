@@ -20,6 +20,24 @@
         </div>
     </div>
 
+    <!-- COMMAND AUTHORIZATION MODAL (BLAST GATE) - NEW -->
+    <div id="command-auth-modal" class="auth-overlay" style="display: none;">
+        <div class="auth-modal" style="border-left: 5px solid #F59E0B; max-width: 500px;">
+            <h2 style="color: #F59E0B;">⚠️ Execution Request</h2>
+            <p>V wants to execute a bare-metal command on your local machine. Please review the command below:</p>
+            
+            <!-- Terminal-style command display -->
+            <div style="background: #111827; color: #10B981; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.9rem; margin: 15px 0; word-wrap: break-word; text-align: left; border: 1px solid #374151;" id="auth-command-display">
+                <!-- Javascript will inject the raw command here -->
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button id="auth-deny-btn" style="flex: 1; background-color: #EF4444; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">Deny Execution</button>
+                <button id="auth-approve-btn" style="flex: 1; background-color: #10B981; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">Authorize</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MAIN APP CONTAINER (3-Column Grid) -->
     <div class="app-container" id="app-container" style="display: none;">
         

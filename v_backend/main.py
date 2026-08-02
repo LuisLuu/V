@@ -77,18 +77,6 @@ async def delete_session_route(session_id: str):
     db.delete_session(session_id)
     return {"status": "success"}
 
-@app.post("/api/shutdown")
-async def shutdown_server():
-    """Forces the Uvicorn server to shut down immediately."""
-    print("🛑 [SYSTEM] Shutdown signal received. Terminating V...")
-    
-    def kill_it():
-        time.sleep(0.5) # Give the server half a second to respond to the browser
-        os._exit(0)     # Hard kill the Python process
-        
-    threading.Thread(target=kill_it).start()
-    return {"status": "shutting down"}
-
 @app.get("/api/settings/context")
 async def get_user_context_route():
     context = db.get_user_context()
@@ -100,3 +88,16 @@ async def update_user_context_route(payload: ContextUpdate):
     return {"status": "success"}
 
 app.include_router(settings_router.router)
+
+@app.post("/api/shutdown")
+async def shutdown_server():
+    """Forces the Uvicorn server to shut down gracefully."""
+    print("🛑 [SYSTEM] Shutdown signal received. Terminating V gracefully...")
+    
+    def kill_it():
+        time.sleep(0.5) 
+        # Send SIGINT to the current process, allowing Uvicorn to run shutdown lifespan events
+        os.kill(os.getpid(), signal.SIGINT)
+        
+    threading.Thread(target=kill_it).start()
+    return {"status": "shutting down"}

@@ -30,6 +30,13 @@ class BlastGate:
         
         # 2. Managed State for WRITE Operations
         if tier == SecurityTier.WRITE:
+            if tool_name == "rest_caller" and str(kwargs.get("method", "")).upper() == "GET":
+                return {
+                    "approved": True,
+                    "status": "AUTO_APPROVED",
+                    "reason": "Safe GET request bypassed WRITE tier."
+                }
+                
             if self.auto_approve_writes:
                 return {
                     "approved": True,
