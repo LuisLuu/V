@@ -1,9 +1,3 @@
-Let’s get this finalized. Your README is the absolute front door to your project. Much like executing a major cleanup of a living space to clear out accumulated clutter, a pristine, well-structured README strips away the technical noise and invites the examiner into a perfectly organized, highly functional environment. If the README is messy, they will assume the code is messy before they even run it.
-
-Since we pivoted to the one-click startup scripts and excised the IoT hardware, your documentation needs to reflect this streamlined, software-first Compound AI architecture.
-
-Here is a comprehensive, brutally professional README.md template tailored exactly for your university submission. Copy this directly into your repository.
-
 V - The AI Assistant
 A Deterministic, Compound AI System for Local Desktop Automation
 
