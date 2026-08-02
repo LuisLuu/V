@@ -1,5 +1,4 @@
 from typing import Dict, Any, List, Optional
-
 from agents.tools.filesystem.directory_scanner import DirectoryScanner
 from agents.tools.filesystem.file_reader import FileReader
 from agents.tools.system.command_executor import CommandExecutor
@@ -9,6 +8,8 @@ from agents.tools.web.search_api import SearchAPI
 from agents.tools.system.task_tool import TaskManagerTool
 from agents.tools.preconditions import BaseTool
 from agents.tools.system.bypass_tool import ConversationalBypass
+from agents.tools.system.memory_tool import MemoryDraftTool
+from agents.tools.workspace_tools import WorkspaceWriter, WorkspaceExecutor
 
 class ToolRegistry:
     def __init__(self):
@@ -20,7 +21,10 @@ class ToolRegistry:
             "web_scraper": WebScraper(),
             "rest_caller": RESTCaller(),
             "task_manager": TaskManagerTool(),
-            "conversational_bypass": ConversationalBypass()
+            "conversational_bypass": ConversationalBypass(),
+            "draft_memory_update": MemoryDraftTool(),
+            "workspace_writer": WorkspaceWriter(),
+            "workspace_executor": WorkspaceExecutor(),
         }
 
     def register_tool(self, tool_name: str, tool_instance: Any):

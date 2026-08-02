@@ -2,14 +2,22 @@ import asyncio
 import json
 import aiohttp
 import traceback
+import re
+
 from fastapi import APIRouter, Request, BackgroundTasks
 from agents.orchestration.state_machine import run_cognitive_graph
 from memory.sqlite_rom import SQLiteROM
 from typing import Optional
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from agents.orchestration.auth_registry import auth_registry
 
 router = APIRouter()
 rom_db = SQLiteROM()
+
+class AuthPayload(BaseModel):
+    action_id: str
+    approved: bool
 
 async def generate_session_title(session_id: str, first_prompt: str, queue: Optional[asyncio.Queue] = None):
     """Background task to generate and save a session title, then notify frontend."""
@@ -82,6 +90,7 @@ async def stream_response(
     
     async def event_generator():
         v_response = ""
+        
         logs = [] 
         try:
             while True:
@@ -104,6 +113,21 @@ async def stream_response(
                     # THE FIX: Send an invisible heartbeat ping to keep the browser socket alive
                     yield ": ping\n\n"
                     continue
+
+                content_str = msg.get("content", "")
+                
+                # Fuzzy match: catches MEMORY_DRAFT with or without underscores/spaces
+                draft_match = re.search(r'(?:__)?MEMORY_DRAFT(?:__)?\s*:\s*(.*)', content_str if isinstance(content_str, str) else "", re.IGNORECASE)
+                
+                if draft_match:
+                    draft_text = draft_match.group(1).strip()
+                    
+                    # Hijack and rewrite the message payload for the frontend
+                    msg = {
+                        "type": "memory_draft",
+                        "content": draft_text
+                    }
+                # ---------------------------------------------
                     
                 # SSE-Starlette defaults to 'message' events when yielding strings
                 yield f"data: {json.dumps(msg)}\n\n"
@@ -148,5 +172,17 @@ async def stream_response(
         }
     )
 
-        
-
+@router.post("/api/authorize_command")
+async def authorize_command(payload: AuthPayload):
+    """
+    Receives frontend approval, unlocks the state machine's Blast Gate, 
+    and signals the orchestrator to resume.
+    """
+    # This reaches into the registry and flips the event.set() lock
+    success = auth_registry.resolve_action(payload.action_id, payload.approved)
+    
+    if success:
+        print(f"[BLAST GATE] Action {payload.action_id} resolved (Approved: {payload.approved}).")
+        return {"status": "resumed" if payload.approved else "denied"}
+    
+    return {"status": "error", "message": "Action ID expired or not found."}

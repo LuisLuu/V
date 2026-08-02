@@ -150,6 +150,16 @@ class SQLiteROM:
                         context TEXT DEFAULT ''
                     )
                 """)
+
+                # Ensure the row exists so we can always UPDATE it
+                cursor.execute("INSERT OR IGNORE INTO user_settings (id, context) VALUES (1, '')")
+                
+                # --- NEW PATCH: Safely add the column if it doesn't exist ---
+                try:
+                    cursor.execute("ALTER TABLE user_settings ADD COLUMN learned_facts TEXT DEFAULT ''")
+                except sqlite3.OperationalError:
+                    pass # Column already exists, safe to ignore
+
                 # Ensure the row exists so we can always UPDATE it
                 cursor.execute("INSERT OR IGNORE INTO user_settings (id, context) VALUES (1, '')")
                 
@@ -338,3 +348,19 @@ class SQLiteROM:
                 cursor = conn.cursor()
                 cursor.execute("INSERT OR REPLACE INTO user_settings (id, context) VALUES (1, ?)", (context,))
         logger.info("[ROM UPDATE] User context preferences updated.")
+
+    def get_learned_facts(self) -> str:
+        """Retrieves V's autonomous memory bank."""
+        with closing(self._get_connection()) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT learned_facts FROM user_settings WHERE id = 1")
+            row = cursor.fetchone()
+            return row["learned_facts"] if row and row["learned_facts"] else ""
+
+    def update_learned_facts(self, facts: str):
+        """Overwrites V's autonomous memory bank."""
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE user_settings SET learned_facts = ? WHERE id = 1", (facts,))
+        logger.info("[ROM UPDATE] Learned facts updated.")

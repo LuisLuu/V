@@ -9,7 +9,7 @@ class CommandExecutor(BaseTool):
     Executes terminal commands inside an isolated Docker container 
     to protect the host operating system from destructive actions.
     """
-    def __init__(self, sandbox_dir: str = "./sandbox", use_docker: bool = True):
+    def __init__(self, sandbox_dir: str = "./sandbox", use_docker: bool = False):
         self.name = "command_executor"
         self.description = (
             "Executes shell commands safely inside an isolated environment "

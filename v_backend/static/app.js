@@ -351,6 +351,28 @@ function toggleInput(state) {
     }
 }
 
+function showAuthModal(commandText, actionId) {
+    // Assuming you have an HTML element with id 'command-auth-modal'
+    const modal = document.getElementById('command-auth-modal');
+    const commandDisplay = document.getElementById('auth-command-display');
+    const approveBtn = document.getElementById('auth-approve-btn');
+    const denyBtn = document.getElementById('auth-deny-btn');
+
+    // Inject the raw command string so you can read exactly what V wants to do
+    commandDisplay.innerText = commandText;
+    modal.style.display = 'flex';
+
+    // Clear old listeners by cloning to prevent multiple triggers
+    const newApproveBtn = approveBtn.cloneNode(true);
+    const newDenyBtn = denyBtn.cloneNode(true);
+    approveBtn.parentNode.replaceChild(newApproveBtn, approveBtn);
+    denyBtn.parentNode.replaceChild(newDenyBtn, denyBtn);
+
+    // Wire up the new buttons to your existing submitCommandAuth function
+    newApproveBtn.addEventListener('click', () => submitCommandAuth(actionId, true));
+    newDenyBtn.addEventListener('click', () => submitCommandAuth(actionId, false));
+}
+
 async function sendQuery(message) {
     if (!message.trim()) return;
     
@@ -371,7 +393,6 @@ async function sendQuery(message) {
     // ---> THE FIX: WE ADDED THE MESSAGE LISTENER HERE <---
     activeEventSource.onmessage = function(event) {
         try {
-            // EventSource natively strips the "data: " prefix, leaving pure JSON
             const msg = JSON.parse(event.data);
             
             if (msg.type === "status") {
@@ -382,24 +403,42 @@ async function sendQuery(message) {
                 if (currentTextDiv) {
                     currentTextDiv.innerHTML += msg.content;
                 }
-            // ---> THE FIX: Catch the backend trigger and run fetchTasks() <---
             } else if (msg.type === "task_update") {
                 fetchTasks();
-            // -----------------------------------------------------------------
             } else if (msg.type === "title_update") {
                 currentChatTitle.innerText = msg.title;
-                fetchSessions(); // Refresh sidebar with new name
-            } else if (msg.type === "done") {
-                // Gracefully kill the stream before the browser auto-reconnects and throws an error
-                activeEventSource.close();
-                activeEventSource = null;
+                fetchSessions(); 
+            } else if (msg.type === "memory_draft") {
+                // Route the data to the new Memory Bank text area
+                const memoryBox = document.getElementById("learned-facts-input");
+                if (memoryBox) {
+                    const currentText = memoryBox.value.trim();
+                    // Append as a clean bullet point
+                    memoryBox.value = currentText ? `${currentText}\n- ${msg.content}` : `- ${msg.content}`;
+                    if (currentLogsDiv) {
+                        currentLogsDiv.innerHTML += `<div style="color:#10B981;">> [SYSTEM] New memory drafted to Memory Bank.</div>`;
+                    }
+                }
+
+            } else if (msg.type === "auth_request") {
+                // 1. Pause the UI (do not unlock input yet)
+                if (currentLogsDiv) {
+                    currentLogsDiv.innerHTML += `<div style="color:#F59E0B; font-weight:bold;">> [SYSTEM PAUSE] Authorization required for command execution.</div>`;
+                }
                 
-                // Parse the final markdown
+                // 2. Trigger the modal (You will need to build this HTML element)
+                showAuthModal(msg.command, msg.action_id);
+
+            } else if (msg.type === "done") {
+                if (activeEventSource) {
+                    activeEventSource.close();
+                    activeEventSource = null;
+                }
                 if (currentTextDiv && typeof marked !== 'undefined') {
                     currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
                 }
-                toggleInput(true); // Unlock UI
-            }
+                toggleInput(true);
+            }                           
         } catch (e) {
             console.error("Stream Parsing Error:", e);
         }
@@ -693,4 +732,28 @@ async function restoreTask(taskId, isChecked) {
     } catch (error) {
         console.error("Failed to restore task:", error);
     }
+}
+
+async function submitCommandAuth(actionId, isApproved) {
+    // Hide the modal
+    document.getElementById('command-auth-modal').style.display = 'none';
+    
+    if (!isApproved) {
+        if (currentLogsDiv) {
+            currentLogsDiv.innerHTML += `<div style="color:#EF4444;">> [USER OVERRIDE] Command execution denied.</div>`;
+        }
+        toggleInput(true);
+        return;
+    }
+
+    if (currentLogsDiv) {
+        currentLogsDiv.innerHTML += `<div style="color:#10B981;">> [SYSTEM] Command authorized. Resuming execution...</div>`;
+    }
+
+    // Send approval to backend
+    await fetch('/api/authorize_command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_id: actionId, approved: true })
+    });
 }

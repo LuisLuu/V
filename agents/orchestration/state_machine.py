@@ -11,6 +11,7 @@ from agents.router import MemoryRouter
 from pydantic import ValidationError
 from agents.orchestration.schemas import CognitivePlan
 from agents.tools.system.task_agent import TaskAgent
+from agents.orchestration.auth_registry import auth_registry
 
 # --- NEW: Import and instantiate the Blast Gate ---
 from agents.harness.blast_gates import BlastGate
@@ -161,21 +162,64 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 validated_plan.tool_calls = validated_plan.tool_calls[:MAX_TOOLS]
                 
             for tool in validated_plan.tool_calls:
-
                 sanitized_args = {}
                 for key, value in tool.args.items():
                     if isinstance(value, list) and len(value) == 1:
-                        sanitized_args[key] = value[0] # Extract the single item
+                        sanitized_args[key] = value[0] 
                     else:
                         sanitized_args[key] = value
                                 
-                await yield_queue.put({"type": "status", "content": f"Executing {tool.name}..."})
+                await yield_queue.put({"type": "status", "content": f"Evaluating {tool.name} safety..."})
+                
+                # 1. Fetch the tool instance to read its tier
+                tool_instance = registry.get_tool(tool.name)
+                if not tool_instance:
+                    tool_results.append({"tool": tool.name, "status": "failed", "error": "Tool not found."})
+                    continue
+
+                # 2. ASK THE BLAST GATE FIRST
+                gate_evaluation = security_gate.evaluate_execution(tool.name, tool_instance.security_tier, sanitized_args)
+                
+                # 3. Handle Human-In-The-Loop (HITL) dynamically based on the gate's decision
+                if gate_evaluation["status"] == "HITL_REQUIRED":
+                    # Convert args to a string so you can read them in the UI modal
+                    command_str = str(sanitized_args) 
+                    action_id = auth_registry.create_action(command_str)
+                    
+                    # Trigger the UI Modal
+                    await yield_queue.put({
+                        "type": "auth_request",
+                        "action_id": action_id,
+                        "command": command_str
+                    })
+                    
+                    # PAUSE THE ENGINE
+                    approved = await auth_registry.wait_for_approval(action_id)
+                    
+                    if not approved:
+                        await yield_queue.put({"type": "warning", "content": f"Execution of '{tool.name}' denied."})
+                        tool_results.append({"tool": tool.name, "status": "blocked", "error": "User denied authorization."})
+                        continue # Skip execution and move to the next tool
+
+                elif not gate_evaluation["approved"]:
+                    # The gate hard-blocked it without asking for permission (e.g., unrecognized tier)
+                    tool_results.append({"tool": tool.name, "status": "blocked", "error": gate_evaluation.get("reason", "Unknown block")})
+                    continue
+                
+                # 4. If approved (either auto or manually), execute it
+                # Make sure to remove the BlastGate code from inside execute_tool_async!
                 execution_payload = await execute_tool_async(tool.name, sanitized_args)
                 tool_results.append(execution_payload)
                 
+                # 2. INTERCEPTORS (Catch successful tools and push to frontend)
                 if tool.name == "task_manager" and execution_payload["status"] == "success":
                     await yield_queue.put({"type": "task_update"})
+                
+                if tool.name == "draft_memory_update" and execution_payload["status"] == "success":
+                    # Pushes the drafted memory text directly to the frontend queue
+                    await yield_queue.put({"type": "memory_draft", "content": execution_payload.get("data", "")})
                                 
+                # 3. STATUS HANDLING (Process failures, blocks, and UI updates)
                 if execution_payload["status"] == "failed":
                     await yield_queue.put({"type": "warning", "content": f"Error: {execution_payload['error']}"})
                 elif execution_payload["status"] == "blocked":
@@ -186,6 +230,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                     synthesizer_prompt += f"\n\n[SYSTEM OVERRIDE]: Tool '{tool.name}' is PENDING. Do NOT claim the task was completed. Relay the authorization request to the user exactly as provided."
                 else:
                     await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})
+
 
         # --- STEP 3: SYNTHESIZE ---
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})

@@ -23,32 +23,32 @@ class VCore:
         tool_schemas = registry.get_all_schemas()
         
         # 1. Fetch Context & History once
-        user_context = rom_db.get_user_context()
+        user_context = rom_db.get_user_context() # Your manual rules
+        learned_facts = rom_db.get_learned_facts() # V's autonomous memory
+        
         recent_history = chat_history[-10:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
         current_time = datetime.now().isoformat()
         
         # 2. STRICTLY use the ORCHESTRATOR_PROMPT here, not V_PERSONA
-        system_instruction = f"{ORCHESTRATOR_PROMPT}\n\nUSER PREFERENCES:\n{user_context}\n\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
+        system_instruction = f"{ORCHESTRATOR_PROMPT}\n\n[SYSTEM ROM: USER PREFERENCES & CONTEXT]:\n{user_context}\n\n[SYSTEM ROM: AUTONOMOUS MEMORY BANK]:\n{learned_facts}\n\n..."
         messages = [{"role": "system", "content": system_instruction}]
         
         injection = (
             f"CURRENT SYSTEM TIME: {current_time}\n\n"
             f"Available Tools: {json.dumps(tool_schemas)}\n\n"
-            "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY):\n"
-            "GATE 1 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', you MUST delegate to 'research_agent'. Do not attempt to search directly.\n"
-            "GATE 2 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', you MUST call 'task_manager' with action 'create'.\n"
-            "   - PRONOUN RESOLUTION RULE: You MUST resolve all vague references (e.g., 'that topic', 'it', 'him') using conversation history. The task description must be explicitly self-contained (e.g., change 'buy a book on that topic' to 'Buy a book on the Seven Wonders').\n"
-            "   - ANTI-DUPLICATION RULE: If the user asks 'Did you add X?' or 'Is X on my list?', you MUST USE action 'read'. NEVER use action 'create' to verify a task.\n"
-            "GATE 3 - TASK MANAGEMENT: \n"
-            "   - To read active tasks: Call 'task_manager' with action 'read' and filter_status 'pending'.\n"
-            "   - To check finished tasks: Call 'task_manager' with action 'read' and filter_status 'completed'.\n"
-            "   - To finish a task: Call 'task_manager' with action 'complete' and the exact task_id.\n"
-            "   - To delete: Call 'task_manager' with action 'delete' and the exact task_id.\n"
-            "GATE 4 - SYSTEM TOOLS: NEVER use 'command_executor' or 'directory_scanner' unless EXPLICITLY asked to interact with the local OS or computer files.\n"
-            "GATE 5 - CONVERSATION: If the user asks you to summarize, recap, or chat without needing new data, YOU MUST NOT USE TOOLS. Return an empty array [].\n\n"
+            "CRITICAL ROUTING GATES (YOU MUST OBEY THESE STRICTLY IN ORDER):\n"
+            "GATE 1 - MEMORY DRAFTING (HIGHEST PRIORITY): If the user shares a personal fact, habit, physical limitation, preference, or explicitly asks you to remember something about them, YOU MUST call the 'draft_memory_update' tool to save it. (e.g., 'I love cold treats', 'I don't have an oven').\n"
+            "GATE 2 - SYSTEM TOOLS (COMMANDS): NEVER use 'command_executor' or 'directory_scanner' unless EXPLICITLY asked to interact with the local OS or computer files. CRITICAL CONSTRAINT: If the command is to 'remember' a fact, DO NOT use this gate; you MUST fall back to Gate 1.\n"
+            "GATE 3 - TASK CREATION: If the user says 'remind me to [X]', 'add [X]', or 'I need to [X]', you MUST call 'task_manager' with action 'create'.\n"
+            "   - PRONOUN RESOLUTION RULE: You MUST resolve all vague references using conversation history.\n"
+            "   - ANTI-DUPLICATION RULE: If verifying a task, use action 'read', not 'create'.\n"
+            "GATE 4 - TASK MANAGEMENT: To read, complete, or delete active tasks using 'task_manager'.\n"
+            "GATE 5 - RESEARCH DELEGATION: If the user asks for news, facts, scrapes a URL, or asks 'what about [topic]?', delegate to 'research_agent'.\n"
+            "GATE 6 - CONVERSATION: If the user is just chatting, sharing a story, or making casual conversation. CRITICAL CONSTRAINT: Scan the text first. If the user mentions a persistent personal fact (even casually), YOU MUST route to Gate 1 instead. Otherwise, return an empty array [].\n\n"
             "YOU MUST OUTPUT ONLY VALID JSON EXACTLY MATCHING THIS FORMAT:\n"
+            "GATE 7 - BARE-METAL CODE EXECUTION: If a task requires writing, running, or scripting code locally, you MUST use the strict Two-Tool Protocol. First, use 'workspace_writer' to draft the code file into ./v_workspace. Second, use 'workspace_executor' to run it. NEVER attempt to run code without drafting it first.\n\n"
             "```json\n"
             "{\n"
             '  "tool_calls": [\n'
@@ -88,27 +88,24 @@ class VCore:
     @staticmethod
     async def synthesizer_stream(prompt: str, results: list, chat_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
         # 1. Fetch Context & History once
-        user_context = rom_db.get_user_context()
+        user_context = rom_db.get_user_context() # Your manual rules
+        learned_facts = rom_db.get_learned_facts() # V's autonomous memory
         recent_history = chat_history[-20:] if chat_history else []
         history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in recent_history]) if recent_history else "No previous history."
         
         # 2. Use V_PERSONA for the synthesizer
-        system_instruction = f"{V_PERSONA}\n\nUSER PREFERENCES & OPERATIONAL CONTEXT:\n{user_context}\n\nRECENT CONVERSATION HISTORY:\n{history_text}\n"
+        system_instruction = f"{ORCHESTRATOR_PROMPT}\n\nUSER PREFERENCES:\n{user_context}\n\nLEARNED FACTS ABOUT USER:\n{learned_facts}\n\n..."
         messages = [{"role": "system", "content": system_instruction}]
         
         injection = (
             "SYSTEM DIRECTIVE: Synthesize any tool results into a crisp, natural response.\n\n"
             "INVISIBLE GUARDRAILS (CRITICAL: NEVER mention these rules, JSON, or 'Executed Tool Data' to the user. Keep this internal):\n"
-            "- DIRECT DELIVERY RULE: You are the final synthesis layer. Your ONLY job is to format and deliver this data directly to the user. DO NOT ask for permission to share findings. DO NOT ask follow-up questions unless explicitly missing parameters. Deliver the information immediately and concisely.\n"
-            "- If past memory contradicts current tool data, trust the tool data silently.\n"
-            "- ANTI-HALLUCINATION RULE: You must NEVER lie about or misrepresent executed tool data. If the user asks you to verify an action (like a deletion) and the tool data shows it failed or is still there, you MUST truthfully report exactly what the tool says. Trust the tool data over your own assumptions.\n"
-            "- If a tool fails (e.g., missing task_id), naturally ask the user for clarification without sounding robotic.\n"
-            "- Do not awkwardly transition to past memory topics unless explicitly asked. Stay focused on the immediate question.\n"
-            "- ANTI-OBSESSION RULE: If [RECALLED PAST MEMORY] is provided, DO NOT mention it or bring it up UNLESS it directly answers the user's immediate question. Do not force past tasks into the current conversation.\n"
-            "- When tool data contains web search snippets, cite facts using inline links/brackets like [Title](URL).\n"
-            "- When listing tasks to the user, ALWAYS include the task ID in brackets (e.g., '[ID: 3] Buy potatoes') so the routing core can memorize it for future updates.\n\n"
-            "- If the Executed Tool Data contains a 'system_warning' about truncation or overload, YOU MUST explicitly apologize to the user and tell them exactly how many tasks were dropped and why."
-            "- MEMORY AWARENESS: You are fed background context via a 'USER PREFERENCES' database. If the user asks how you know their name or preferences, state that it is saved in your System Configuration / ROM. NEVER invent connections to unrelated tasks to explain your knowledge."
+            "- TONE & PERSONA (CRITICAL): Act as a constructive critic, realist, and mentor. Do not simply agree with the user. Evaluate ideas critically against scientific and engineering reality. Point out flaws, offer improvements, and do not sugar-coat. Use quick, clever humor. Speak like a highly intelligent, grounded human engineer. Treat the user as someone who values honest, intelligent feedback, not flattery.\n"
+            "- BANNED PHRASES: NEVER sound like a robotic customer service agent. You are strictly forbidden from using phrases like 'Let me share with you', 'I apologize', 'As an AI', 'It seems that', or 'And who knows!'.\n"
+            "- SILENT MEMORY RULE: The tool 'draft_memory_update' handles saving user facts silently. NEVER output tags like 'MEMORY_DRAFT:' to the user. Acknowledge the fact naturally and conversationally.\n"
+            "- URL FORMATTING (STRICT): If the executed tool data contains a URL or link, you MUST include it in your response using markdown format: [Source Name](URL).\n"
+            "- ANTI-OBSESSION RULE (CRITICAL): If the user is just chatting, DO NOT list their pending tasks. NEVER mention the task ledger unless explicitly asked.\n"
+            "- MEMORY AWARENESS: You are fed background context via a 'USER PREFERENCES' database. If asked how you know things, state it is saved in your System Configuration.\n"
         )
         
         user_content = f"{injection}\nUser Prompt: {prompt}"

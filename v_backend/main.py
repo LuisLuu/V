@@ -13,6 +13,7 @@ from v_backend.routers import event_streams, chat_routes
 from v_backend.routers.task_routes import task_router
 from v_backend.routers import auth_routes
 from memory.sqlite_rom import SQLiteROM
+from v_backend.routers import settings_router
 
 # Instantiate a global DB connection for our API routes
 db = SQLiteROM()
@@ -97,3 +98,5 @@ async def get_user_context_route():
 async def update_user_context_route(payload: ContextUpdate):
     db.update_user_context(payload.context)
     return {"status": "success"}
+
+app.include_router(settings_router.router)
