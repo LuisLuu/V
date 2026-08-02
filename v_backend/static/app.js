@@ -542,7 +542,7 @@ async function fetchTasks() {
         activeTasks.forEach(task => {
             const card = document.createElement('div');
             card.className = 'task-card';
-            
+            // THE FIX: Added flex-style layout and the delete button
             card.innerHTML = `
                 <input type="checkbox" class="task-checkbox" onchange="toggleTaskStatus(${task.id}, this.checked)">
                 <div class="task-details">
@@ -551,10 +551,12 @@ async function fetchTasks() {
                         <span class="priority-${task.priority}">${task.priority}</span> | ${task.status.replace('_', ' ')}
                     </span>
                 </div>
+                <button onclick="deleteTaskUI(${task.id})" style="background: none; border: none; color: #EF4444; cursor: pointer; font-size: 1.2rem; margin-left: auto; padding: 0 5px;" title="Delete Task">×</button>
             `;
             
             activeContainer.appendChild(card);
         });
+        
     } catch (error) {
         console.error("Task Fetch Error:", error);
         document.getElementById('active-tasks-list').innerHTML = '<div style="color: #EF4444; text-align: center; padding: 20px;">Failed to load tasks.</div>';
@@ -696,6 +698,8 @@ async function loadArchive() {
                             <span class="priority-${task.priority}">${task.priority}</span> | ARCHIVED
                         </span>
                     </div>
+                    <!-- THE FIX: Injected the exact same delete button for the archive -->
+                    <button onclick="deleteTaskUI(${task.id})" style="background: none; border: none; color: #EF4444; cursor: pointer; font-size: 1.2rem; margin-left: auto; padding: 0 5px;" title="Delete Task">×</button>
                 `;
                 archiveContainer.appendChild(card);
             });

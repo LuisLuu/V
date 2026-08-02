@@ -22,7 +22,10 @@ class TaskManagerTool(BaseTool):
                         "action": {
                             "type": "string",
                             "enum": ["create", "list", "read", "update", "delete"],
-                            "description": "The task action to perform."
+                            "description": "The task action to perform. CRITICAL TRANSLATION RULES:\n"
+                                           "- If the user says 'done', 'finished', 'completed', 'already did', or 'remove from list', you MUST use action='update' with status='completed'.\n"
+                                           "- NEVER use action='delete' unless the user explicitly tells you to permanently wipe or destroy a task from the database.\n"
+                                           "- To find finished or archived tasks, use 'list' with status='completed'."
                         },
                         "title": {
                             "type": "string",
@@ -48,7 +51,7 @@ class TaskManagerTool(BaseTool):
                         "status": {
                             "type": "string",
                             "enum": ["pending", "in_progress", "completed", "cancelled"],
-                            "description": "Task status (required for 'update', optional for 'list')."
+                            "description": "Task status (required for 'update'). Use 'completed' when listing tasks to retrieve the historical archive."
                         },
                         # --- CRITICAL FIX: The Authorization Flag ---
                         "authorized": {

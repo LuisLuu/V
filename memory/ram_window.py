@@ -9,11 +9,11 @@ class RAMWindow:
         self.is_critical = False
         
     def get_recent_history(self) -> str:
-        # Pin the summary to the top of the active memory
-        history_text = f"[SYSTEM: Rolling Summary of Evicted Memory]: {self.rolling_summary}\n\n"
+        # THE FIX: Drop the permanent rolling_summary injection. Let MemoryRouter handle recall.
         if not self.buffer:
-            return history_text
-        history_text += "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in self.buffer])
+            return "No previous context."
+        
+        history_text = "\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in self.buffer])
         return history_text
 
     def _get_current_size(self) -> int:

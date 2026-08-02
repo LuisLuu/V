@@ -64,6 +64,7 @@ class TaskAgent:
                         "UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                         (status, task_id)
                     )
+                    target_id = task_id
                 else:
                     # Safe Title Resolution: Verify matching records first
                     cursor.execute("SELECT id FROM tasks WHERE title LIKE ?", (f"%{title}%",))
@@ -85,8 +86,9 @@ class TaskAgent:
 
                 conn.commit()
                 
-            logger.info(f"Task updated to {status}.")
-            return {"status": "success", "message": f"Task successfully marked as {status}."}
+            logger.info(f"Task {target_id} updated to {status}.")
+            # THE FIX: Inject the exact ID into the return payload
+            return {"status": "success", "message": f"[SYSTEM NOTIFICATION]: Task ID {target_id} successfully marked as {status}. Inform the user."}
         except Exception as e:
             logger.error(f"Task update failed: {e}")
             return {"status": "error", "message": str(e)}
@@ -103,6 +105,7 @@ class TaskAgent:
                 # Direct ID target
                 if task_id is not None:
                     cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                    target_id = task_id # <--- ADD THIS LINE to prevent UnboundLocalError
                 else:
                     # Safe Title Resolution: Verify matching records first
                     cursor.execute("SELECT id FROM tasks WHERE title LIKE ?", (f"%{title}%",))
@@ -123,10 +126,13 @@ class TaskAgent:
                 conn.commit()
                 
             if affected == 0:
-                return {"status": "error", "message": "Task missing or already deleted."}
+                return {"status": "error", "message": f"Task {target_id} missing or already deleted."}
                 
-            logger.info("Task deleted.")
-            return {"status": "success", "message": "Task successfully deleted."}
+            logger.info(f"Task {target_id} deleted.")
+            
+            # <--- THE FIX: Loud System Notification --->
+            return {"status": "success", "message": f"[SYSTEM NOTIFICATION]: Task ID {target_id} successfully deleted from the ledger. Inform the user."}
+
         except Exception as e:
             logger.error(f"Task deletion failed: {e}")
             return {"status": "error", "message": str(e)}

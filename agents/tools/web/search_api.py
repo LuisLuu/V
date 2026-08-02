@@ -60,6 +60,7 @@ class SearchAPI(BaseTool):
                     soup = BeautifulSoup(html, "html.parser")
                     
                     results = []
+
                     # Enforce strict hard cap (MAX_RESULTS = 3)
                     for row in soup.find_all("div", class_="result")[:3]:
                         title_elem = row.find("a", class_="result__a")
@@ -72,6 +73,12 @@ class SearchAPI(BaseTool):
                                 "snippet": snippet_elem.text.strip()
                             })
                     
-                    return results if results else [{"warning": "No search results returned for query."}]
+                    # THE FIX: Format as a rigid string so the LLM cannot ignore the URL
+                    if results:
+                        formatted_text = "\n\n".join([f"SOURCE TITLE: {r['title']}\nURL: {r['url']}\nFACTS: {r['snippet']}" for r in results])
+                        return [{"status": "success", "data": formatted_text}]
+                    else:
+                        return [{"status": "failed", "error": "Search failed. Do not hallucinate URLs."}]
+                    
         except Exception as e:
             return [{"error": f"Search execution failed: {str(e)}"}]

@@ -120,6 +120,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 
             state_injection = f"\n\n[CURRENT SYSTEM TASKS]:\n{task_list_str}"
             state_injection += "\n[CRITICAL RULE]: When asked to update or delete a task without an explicit ID, you must use the chat history to deduce which task the user means, find its ID in the list above, and INCLUDE the integer in your tool call."
+            state_injection += "\n[BATCH PROCESSING RULE]: If the user updates or mentions multiple tasks in a single sentence (e.g., 'I bought the chicken and the tree'), you MUST output a separate tool call for EACH item in the 'tool_calls' array. Never ignore secondary items."    
             planner_prompt += "\n[CRITICAL RULE]: If the user asks a general knowledge, research, or comparative question (e.g., hardware differences, definitions), DO NOT use local file system tools. Proceed with an empty tool plan and synthesize the answer from your training data or a web search."
             
             planner_prompt += state_injection
@@ -217,9 +218,7 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                     continue
                 
                 # 4. If approved (either auto or manually), execute it
-                # Make sure to remove the BlastGate code from inside execute_tool_async!
                 execution_payload = await execute_tool_async(tool.name, sanitized_args)
-                tool_results.append(execution_payload)
                 
                 # 2. INTERCEPTORS (Catch successful tools and push to frontend)
                 if tool.name == "task_manager" and execution_payload["status"] == "success":
@@ -227,8 +226,16 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 
                 if tool.name == "draft_memory_update" and execution_payload["status"] == "success":
                     draft_text = execution_payload.get("data", "")
-                    # Just push it straight to the UI queue, no more filtering here!
+                    
+                    # Push the raw draft straight to the UI queue
                     await yield_queue.put({"type": "memory_draft", "content": draft_text})
+                    
+                    # ---> THE FIX: Mute the payload for the Synthesizer <---
+                    # This prevents the LLM from seeing the CRITICAL DIRECTIVE prompt.
+                    execution_payload["data"] = "System Notification: Memory successfully saved to ROM. Acknowledge this naturally."
+                
+                # Append the (now sanitized) payload to the results for the Synthesizer
+                tool_results.append(execution_payload)
                                 
                 # 3. STATUS HANDLING (Process failures, blocks, and UI updates)
                 if execution_payload["status"] == "failed":
@@ -251,8 +258,37 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
 
         await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
         
+        buffer = ""
+        trigger_words = ["__MEMORY_DRAFT__", "MEMORY_DRAFT:", "MEMORY_DRAFT"]
+        
         async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, clean_history):
-            await yield_queue.put({"type": "token", "content": token})
+            buffer += token
+            
+            # 1. If we catch a full forbidden tag, scrub it out
+            if any(trigger in buffer for trigger in trigger_words):
+                for trigger in trigger_words:
+                    buffer = buffer.replace(trigger, "")
+                continue # Skip yielding to the UI this round to cleanly scrub
+                
+            # 2. Check if the buffer is currently building a forbidden word (partial match)
+            # We check if the end of the buffer matches the start of any trigger word
+            is_partial_match = False
+            for trigger in trigger_words:
+                for i in range(1, len(trigger)):
+                    if buffer.endswith(trigger[:i]):
+                        is_partial_match = True
+                        break
+                if is_partial_match:
+                    break
+            
+            # 3. If it's safe and not a partial trigger, flush it to the UI
+            if not is_partial_match:
+                await yield_queue.put({"type": "token", "content": buffer})
+                buffer = ""
+                
+        # 4. Flush anything left over after the stream closes
+        if buffer:
+            await yield_queue.put({"type": "token", "content": buffer})
             
     except Exception as e:
         await yield_queue.put({"type": "warning", "content": f"System Crash: {str(e)}"})
