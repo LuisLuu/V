@@ -54,7 +54,16 @@ class ResearchSubAgent(BaseTool):
         system_instruction = (
             "You are V's Research Sub-Agent. Your only job is to execute research and return a factual brief.\n"
             f"Available Tools: {json.dumps(tool_schemas)}\n"
-            "Output ONLY valid JSON to call a tool, or return a synthesized text brief if you have the answer."
+            "You MUST output ONLY valid JSON matching this exact schema:\n"
+            "{\n"
+            '  "tool_calls": [\n'
+            '    {\n'
+            '      "name": "tool_name_here",\n'
+            '      "args": {"arg_name": "arg_value"}\n'
+            '    }\n'
+            '  ]\n'
+            "}\n"
+            "If you do not need a tool, return an empty tool_calls array."
         )
         
         # 2. Ask the Sub-Agent LLM how to accomplish the research
@@ -89,13 +98,24 @@ class ResearchSubAgent(BaseTool):
                     if tool_instance is None:
                         continue
                         
+                    # THE FIX: Sanitize args in case Ollama wrapped them in lists
+                    sanitized_args = {}
+                    for key, value in tool.args.items():
+                        sanitized_args[key] = value[0] if isinstance(value, list) and len(value) == 1 else value
+                        
                     if inspect.iscoroutinefunction(tool_instance.execute):
-                        res = await tool_instance.execute(**tool.args)
+                        res = await tool_instance.execute(**sanitized_args)
                     else:
                         import asyncio
-                        res = await asyncio.to_thread(tool_instance.execute, **tool.args)
-                    research_data.append(res)
+                        res = await asyncio.to_thread(tool_instance.execute, **sanitized_args)
+                    
+                    if res:
+                        research_data.append(res)
                 
+        # THE FIX: Stop the hallucination at the source by refusing to return empty arrays
+        if not research_data or research_data == [[]] or research_data == [{"error": "Search execution failed"}]:
+            return "Research Sub-Agent failed: No web data found. CRITICAL: Inform the user the search failed. Do NOT invent or hallucinate URLs."
+            
         # 5. Return the raw data to the main Synthesizer
         return f"Research Sub-Agent Brief: {json.dumps(research_data)}"
 

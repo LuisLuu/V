@@ -770,3 +770,63 @@ async function submitCommandAuth(actionId, isApproved) {
         body: JSON.stringify({ action_id: actionId, approved: true })
     });
 }
+
+async function deleteTaskUI(taskId) {
+    if (confirm("Are you sure you want to permanently delete this task?")) {
+        try {
+            await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+            // Refresh both views to keep the UI perfectly synced
+            fetchTasks(); 
+            if (document.getElementById('archive-list-container').style.display === 'flex') {
+                loadArchive();
+            }
+        } catch (error) {
+            console.error("Failed to delete task:", error);
+        }
+    }
+}
+
+/* ==========================================================================
+   SAFE ZONE SETTINGS (UI Only)
+   ========================================================================== */
+const darkModeToggle = document.getElementById('dark-mode-toggle');
+const clearHistoryBtn = document.getElementById('clear-history-btn');
+
+// 1. Initialize Theme from Memory on Boot
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark-mode');
+    if (darkModeToggle) darkModeToggle.checked = true;
+}
+
+// 2. Listen for Theme Toggle Changes
+if (darkModeToggle) {
+    darkModeToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('theme', 'light');
+        }
+    });
+}
+
+// 3. Clear Chat DOM Logic
+if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', () => {
+        const confirmWipe = confirm("This will clear the current screen. Backend chat history is NOT deleted. Proceed?");
+        if (confirmWipe) {
+            const chatLogContainer = document.getElementById('chat-log');
+            if (chatLogContainer) {
+                // Restore the welcome screen just like in switchSession()
+                chatLogContainer.innerHTML = `<div class="welcome-screen" id="welcome-screen">
+                    <h1 style="color: var(--text-main, #111827);">Display Cleared</h1>
+                    <p style="color: var(--text-muted, #6B7280);">DOM history wiped. Ready for new input.</p>
+                </div>`;
+            }
+            // Close settings automatically to show the clean slate
+            document.getElementById('settings-view').style.display = 'none';
+            document.getElementById('app-container').style.display = 'grid';
+        }
+    });
+}

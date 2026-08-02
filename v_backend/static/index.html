@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>V Assistant</title>
-    <link rel="stylesheet" href="/static/styles.css?v=3">
-    <!-- 100% OFFLINE MARKDOWN PARSER -->
+    <link rel="stylesheet" href="/static/styles.css?v=4">    <!-- 100% OFFLINE MARKDOWN PARSER -->
     <script src="/static/marked.min.js"></script>
+    
 </head>
 <body>
     <!-- SECURITY GATE OVERLAY -->
@@ -85,7 +85,7 @@
         <aside class="task-sidebar">
             <header class="task-header">
                 <h2>System Tasks</h2>
-                <button id="refresh-tasks-btn" title="Sync with ROM">🔄</button>
+                <button id="refresh-tasks-btn" title="Sync with ROM"></button>
             </header>
             
             <div class="task-input-area">
@@ -108,6 +108,22 @@
         </header>
         
         <main class="settings-content">
+            <!-- Safe Zone: UI Preferences -->
+            <section class="config-section">
+                <h3>Appearance & Interface</h3>
+                <p class="config-desc">Manage local UI preferences. These changes do not affect the backend SQLite databases.</p>
+                
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; padding: 10px 0; border-bottom: 1px solid var(--border-color, #E5E7EB);">
+                    <label for="dark-mode-toggle" style="font-weight: 500; color: var(--text-main, #111827);">Enable Dark Mode</label>
+                    <input type="checkbox" id="dark-mode-toggle" style="transform: scale(1.3); cursor: pointer;">
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 5px;">
+                    <span style="font-weight: 500; color: var(--text-main, #111827);">Clear Chat Display</span>
+                    <button id="clear-history-btn" class="btn-secondary">Wipe DOM History</button>
+                </div>
+            </section>
+            
             <!-- Context Configuration -->
             <section class="config-section">
                 <h3>Behavioral Context</h3>
@@ -144,6 +160,6 @@
             </section>
         </main>
     </div>
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>

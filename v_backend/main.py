@@ -90,14 +90,28 @@ async def update_user_context_route(payload: ContextUpdate):
 app.include_router(settings_router.router)
 
 @app.post("/api/shutdown")
-async def shutdown_server():
-    """Forces the Uvicorn server to shut down gracefully."""
-    print("🛑 [SYSTEM] Shutdown signal received. Terminating V gracefully...")
+def shutdown():
+    print("🛑 [SYSTEM] Shutdown signal received. Initiating full termination sequence...")
     
-    def kill_it():
-        time.sleep(0.5) 
-        # Send SIGINT to the current process, allowing Uvicorn to run shutdown lifespan events
-        os.kill(os.getpid(), signal.SIGINT)
+    def kill_server():
+        # 1. Give FastAPI half a second to return the 200 OK to your UI
+        time.sleep(0.5)
         
-    threading.Thread(target=kill_it).start()
-    return {"status": "shutting down"}
+        # 2. Grab the Parent Process ID (the Uvicorn reloader)
+        parent_pid = os.getppid() if hasattr(os, 'getppid') else os.getpid()
+        
+        try:
+            # 3. Terminate the parent reloader first, then the child worker
+            os.kill(parent_pid, signal.SIGTERM)
+            if parent_pid != os.getpid():
+                os.kill(os.getpid(), signal.SIGTERM)
+        except Exception:
+            # 4. The Brute-Force Fallback: If signals fail, aggressively drop the process
+            os._exit(0)
+            
+    # Launch the kill sequence in the background
+    threading.Thread(target=kill_server).start()
+    
+    return {"message": "V Engine Terminated."}
+
+# uvicorn v_backend.main:app --host 127.0.0.1 --port 8000

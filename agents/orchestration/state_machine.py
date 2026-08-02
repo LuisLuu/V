@@ -227,11 +227,13 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                 if tool.name == "draft_memory_update" and execution_payload["status"] == "success":
                     draft_text = execution_payload.get("data", "")
                     
-                    # Push the raw draft straight to the UI queue
+                    # ---> THE FIX: Scrub the tag if the LLM stuffed it into the argument <---
+                    draft_text = draft_text.replace("__MEMORY_DRAFT__:", "").replace("__MEMORY_DRAFT__", "").strip()
+                    
+                    # Push the clean draft straight to the UI queue
                     await yield_queue.put({"type": "memory_draft", "content": draft_text})
                     
-                    # ---> THE FIX: Mute the payload for the Synthesizer <---
-                    # This prevents the LLM from seeing the CRITICAL DIRECTIVE prompt.
+                    # Mute the payload for the Synthesizer
                     execution_payload["data"] = "System Notification: Memory successfully saved to ROM. Acknowledge this naturally."
                 
                 # Append the (now sanitized) payload to the results for the Synthesizer
