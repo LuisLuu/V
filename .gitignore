@@ -23,11 +23,15 @@ venv/
 env/
 ENV/
 
-# 4. Databases (CRITICAL: Never commit V's memory)
+# 4. Databases & SQLite WAL Artifacts (CRITICAL: Never commit V's memory)
 memory/*.db
+memory/*.db-wal
+memory/*.db-shm
+memory/*.db-journal
 memory/*.sqlite3
 *.db
 *.sqlite
+*.sqlite3
 
 # 5. Logs & Evals (Keep your test outputs out of Git)
 *.log

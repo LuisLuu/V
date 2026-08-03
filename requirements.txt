@@ -1,2 +1,9 @@
-paho-mqtt
+fastapi
+uvicorn
+pydantic
+aiohttp
+requests
+beautifulsoup4
+bcrypt
 sse-starlette
+paho-mqtt
