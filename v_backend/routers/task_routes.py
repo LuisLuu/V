@@ -1,33 +1,40 @@
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+
 from agents.tools.system.task_agent import TaskAgent
 
 task_router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 agent = TaskAgent()
+
 
 class CreateTaskRequest(BaseModel):
     title: str
     description: Optional[str] = ""
     priority: Optional[str] = "medium"
 
+
 class UpdateTaskRequest(BaseModel):
     status: str
+
 
 @task_router.post("/")
 def create_task(payload: CreateTaskRequest):
     res = agent.create_task(
         title=payload.title,
         description=payload.description or "",
-        priority=payload.priority or "medium"
+        priority=payload.priority or "medium",
     )
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
+
 @task_router.get("/")
 def list_tasks(status: Optional[str] = None) -> List[Dict[str, Any]]:
     return agent.list_tasks(status_filter=status)
+
 
 @task_router.patch("/{task_id}")
 def update_task(task_id: int, payload: UpdateTaskRequest):
@@ -36,7 +43,8 @@ def update_task(task_id: int, payload: UpdateTaskRequest):
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
-# NEW: Added the DELETE endpoint so the UI can sync with the backend
+
+# Added the DELETE endpoint so the UI can sync with the backend[cite: 27]
 @task_router.delete("/{task_id}")
 def delete_task(task_id: int):
     res = agent.delete_task(task_id=task_id)

@@ -1,19 +1,20 @@
 import asyncio
-import json
-import re
 import inspect
-
+import json
 from pathlib import Path
-from agents.tools.tool_registry import registry
+import re
+
+from pydantic import ValidationError
+
+from agents.harness.blast_gates import BlastGate
+from agents.orchestration.auth_registry import auth_registry
+from agents.orchestration.schemas import CognitivePlan
 from agents.orchestration.v_core import VCore
 from agents.router import MemoryRouter
-from pydantic import ValidationError
-from agents.orchestration.schemas import CognitivePlan
 from agents.tools.system.task_agent import TaskAgent
-from agents.orchestration.auth_registry import auth_registry
+from agents.tools.tool_registry import registry
 
-# --- NEW: Import and instantiate the Blast Gate ---
-from agents.harness.blast_gates import BlastGate
+# --- Instantiate the Blast Gate ---
 security_gate = BlastGate()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -21,47 +22,68 @@ DB_PATH = BASE_DIR / "memory" / "rom.db"
 
 router = MemoryRouter(db_path=str(DB_PATH))
 
-HIGH_RISK_TOOLS = {"command_executor", "terminal_run"} # Triggers Blast Gate
-SAFE_TOOLS = {"task_manager", "memory_router", "conversational_bypass"} # Auto-approved
+HIGH_RISK_TOOLS = {"command_executor", "terminal_run"}  # Triggers Blast Gate
+SAFE_TOOLS = {
+    "task_manager",
+    "memory_router",
+    "conversational_bypass",
+}  # Auto-approved
+
 
 def sanitize_history(history: list) -> list:
     """Non-destructively strips raw tool JSON from the Planner's view of history."""
     clean = []
     for msg in history:
-        if msg.get('role') not in ['user', 'assistant']:
+        if msg.get("role") not in ["user", "assistant"]:
             continue
         # Strip out the markdown JSON blocks to prevent the LLM from mimicking past tool calls
-        clean_content = re.sub(r'```(?:json)?\n?.*?\n?```', '[Tool Execution Resolved]', msg.get('content', ''), flags=re.DOTALL).strip()
+        clean_content = re.sub(
+            r"```(?:json)?\n?.*?\n?```",
+            "[Tool Execution Resolved]",
+            msg.get("content", ""),
+            flags=re.DOTALL,
+        ).strip()
         if clean_content:
-            clean.append({"role": msg['role'], "content": clean_content})
+            clean.append({"role": msg["role"], "content": clean_content})
     return clean
 
+
 async def execute_tool_async(tool_name: str, args: dict) -> dict:
-    """
-    Secure bridge enforcing BaseTool preconditions and SecurityTiers.
-    """
+    """Secure bridge enforcing BaseTool preconditions and SecurityTiers."""
     if not registry.has_tool(tool_name):
-         return {"status": "failed", "error": f"Tool '{tool_name}' not found in registry."}
+        return {
+            "status": "failed",
+            "error": f"Tool '{tool_name}' not found in registry.",
+        }
 
     tool_instance = registry.get_tool(tool_name)
 
     if tool_instance is None:
-        return {"status": "failed", "error": f"Tool '{tool_name}' failed to load."}
+        return {
+            "status": "failed",
+            "error": f"Tool '{tool_name}' failed to load.",
+        }
 
     # 1. Hardware/Environment Precondition Check
     if not tool_instance.verify_preconditions():
-        return {"tool": tool_name, "status": "failed", "error": "Causal sensors rejected execution."}
+        return {
+            "tool": tool_name,
+            "status": "failed",
+            "error": "Causal sensors rejected execution.",
+        }
 
-    # ---> THE FIX: Bypass Blast Gate for Safe Tools <---
+    # 2. Security Tier Check via BlastGate (Bypass for Safe Tools)
     if tool_name not in SAFE_TOOLS:
-        # 2. Security Tier Check via BlastGate
-        gate_evaluation = security_gate.evaluate_execution(tool_name, tool_instance.security_tier, args)
-        
+        gate_evaluation = security_gate.evaluate_execution(
+            tool_name, tool_instance.security_tier, args
+        )
+
         if not gate_evaluation["approved"]:
             return {
-                "tool": tool_name, 
-                "status": gate_evaluation["status"], 
-                "error": gate_evaluation.get("ui_prompt") or gate_evaluation.get("reason")
+                "tool": tool_name,
+                "status": gate_evaluation["status"],
+                "error": gate_evaluation.get("ui_prompt")
+                or gate_evaluation.get("reason"),
             }
 
     try:
@@ -70,209 +92,329 @@ async def execute_tool_async(tool_name: str, args: dict) -> dict:
             result = await tool_instance.execute(**args)
         else:
             result = await asyncio.to_thread(tool_instance.execute, **args)
-            
-        # ---> THE UNIVERSAL ERROR CATCHER <---
+
+        # Universal Error Catcher
         if isinstance(result, dict) and result.get("status") == "error":
-             return {"tool": tool_name, "status": "failed", "error": result.get("message", "Tool execution failed silently.")}
+            return {
+                "tool": tool_name,
+                "status": "failed",
+                "error": result.get(
+                    "message", "Tool execution failed silently."
+                ),
+            }
 
         return {"tool": tool_name, "status": "success", "data": result}
     except Exception as e:
         return {"tool": tool_name, "status": "failed", "error": str(e)}
 
-async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_history: list):
-    """
-    Executes a strict, loop-free 0-1-2-3 cognitive pipeline.
-    """
+
+async def run_cognitive_graph(
+    prompt: str, yield_queue: asyncio.Queue, chat_history: list
+):
+    """Executes a strict, loop-free 0-1-2-3 cognitive pipeline."""
     try:
-        await yield_queue.put({"type": "status", "content": "Initializing cognitive routing..."})
+        await yield_queue.put(
+            {"type": "status", "content": "Initializing cognitive routing..."}
+        )
         tool_results = []
-        
+
         # --- STEP 0: CONTEXT ROUTING ---
         retrieved_context = None
         # Heuristic Bypass: Only run the heavy DB search if prompt has semantic weight
         if len(prompt.split()) > 3 and len(prompt) > 15:
-            retrieved_context = await asyncio.to_thread(router.evaluate_and_fetch, prompt)
-        
+            retrieved_context = await asyncio.to_thread(
+                router.evaluate_and_fetch, prompt
+            )
+
         planner_prompt = prompt
         synthesizer_prompt = prompt
-        
-        # RESTORED: Inject memory into both prompts if the router found something
+
+        # Inject memory into both prompts if the router found something
         if retrieved_context:
             memory_injection = f"\n\n[RECALLED PAST MEMORY]: {retrieved_context}"
             planner_prompt += memory_injection
             synthesizer_prompt += memory_injection
-            await yield_queue.put({"type": "status", "content": "Context retrieved from ROM."})
-            
-        await yield_queue.put({"type": "status", "content": "Syncing Task Ledger..."})
+            await yield_queue.put(
+                {"type": "status", "content": "Context retrieved from ROM."}
+            )
+
+        await yield_queue.put(
+            {"type": "status", "content": "Syncing Task Ledger..."}
+        )
         try:
             task_agent = TaskAgent()
-            all_tasks = await asyncio.to_thread(task_agent.list_tasks) 
-            
-            # CRITICAL FIX: Filter out completed tasks so V only sees what needs to be done
-            active_tasks = [t for t in all_tasks if t['status'] in ['pending', 'in_progress']]
-            
+            all_tasks = await asyncio.to_thread(task_agent.list_tasks)
+
+            # Filter out completed tasks so V only sees what needs to be done
+            active_tasks = [
+                t for t in all_tasks if t["status"] in ["pending", "in_progress"]
+            ]
+
             task_list_str = ""
             if active_tasks:
-                task_list_str = "\n".join([f"- [ID: {t['id']}] {t['title']} (Status: {t['status']})" for t in active_tasks])
+                task_list_str = "\n".join(
+                    [
+                        f"- [ID: {t['id']}] {t['title']} (Status: {t['status']})"
+                        for t in active_tasks
+                    ]
+                )
             else:
                 task_list_str = "No active tasks."
-                
+
             state_injection = f"\n\n[CURRENT SYSTEM TASKS]:\n{task_list_str}"
             state_injection += "\n[CRITICAL RULE]: When asked to update or delete a task without an explicit ID, you must use the chat history to deduce which task the user means, find its ID in the list above, and INCLUDE the integer in your tool call."
-            state_injection += "\n[BATCH PROCESSING RULE]: If the user updates or mentions multiple tasks in a single sentence (e.g., 'I bought the chicken and the tree'), you MUST output a separate tool call for EACH item in the 'tool_calls' array. Never ignore secondary items."    
+            state_injection += "\n[BATCH PROCESSING RULE]: If the user updates or mentions multiple tasks in a single sentence (e.g., 'I bought the chicken and the tree'), you MUST output a separate tool call for EACH item in the 'tool_calls' array. Never ignore secondary items."
             planner_prompt += "\n[CRITICAL RULE]: If the user asks a general knowledge, research, or comparative question (e.g., hardware differences, definitions), DO NOT use local file system tools. Proceed with an empty tool plan and synthesize the answer from your training data or a web search."
-            
+
             planner_prompt += state_injection
             synthesizer_prompt += state_injection
         except Exception as e:
-            await yield_queue.put({"type": "warning", "content": f"Ledger Sync Failed: {e}"})
-        # --------------------------------------------------------
+            await yield_queue.put(
+                {"type": "warning", "content": f"Ledger Sync Failed: {e}"}
+            )
 
         # --- STEP 1: PLAN ---
-        await yield_queue.put({"type": "status", "content": "Planning execution path..."})
-        
+        await yield_queue.put(
+            {"type": "status", "content": "Planning execution path..."}
+        )
+
         clean_history = sanitize_history(chat_history)
-        plan_payload = await VCore.planner_llm_call(planner_prompt, tool_results, clean_history)
-        
+        plan_payload = await VCore.planner_llm_call(
+            planner_prompt, tool_results, clean_history
+        )
+
         try:
-    # 1. Clean the payload (keep your regex just in case the LLM wraps it in markdown)
-            clean_payload = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', plan_payload, flags=re.DOTALL).strip()
-            
-            # 2. STRICT VALIDATION: Coerce the string directly into our Pydantic model
+            # Clean the payload (keep regex to handle markdown wrappers)
+            clean_payload = re.sub(
+                r"```(?:json)?\n?(.*?)\n?```",
+                r"\1",
+                plan_payload,
+                flags=re.DOTALL,
+            ).strip()
+
+            # Coerce the string directly into our Pydantic model
             validated_plan = CognitivePlan.model_validate_json(clean_payload)
 
         except ValidationError as e:
-            # Pydantic caught a structural error (e.g., missing 'tool_calls' list)
             error_msg = f"Critical error: Planner output failed schema validation. Details: {str(e)}"
             await yield_queue.put({"type": "warning", "content": error_msg})
             validated_plan = CognitivePlan(tool_calls=[])
             tool_results.append({"status": "failed", "error": error_msg})
         except json.JSONDecodeError:
-            # The LLM output wasn't even JSON
             error_msg = "Critical error: Planner failed to output valid JSON."
             await yield_queue.put({"type": "warning", "content": error_msg})
             validated_plan = CognitivePlan(tool_calls=[])
             tool_results.append({"status": "failed", "error": error_msg})
 
         if validated_plan.tool_calls:
-            
             # --- THE CIRCUIT BREAKER ---
             MAX_TOOLS = 3
             if len(validated_plan.tool_calls) > MAX_TOOLS:
                 warning_msg = f"System Overload: Planner requested {len(validated_plan.tool_calls)} tools. Truncating to {MAX_TOOLS}."
-                await yield_queue.put({"type": "warning", "content": warning_msg})
-                
-                # THE FIX: Tell the Synthesizer about the failure!
-                tool_results.append({"status": "system_warning", "message": warning_msg, "dropped_tasks": len(validated_plan.tool_calls) - MAX_TOOLS})
-                
-                validated_plan.tool_calls = validated_plan.tool_calls[:MAX_TOOLS]
-                
+                await yield_queue.put(
+                    {"type": "warning", "content": warning_msg}
+                )
+
+                tool_results.append(
+                    {
+                        "status": "system_warning",
+                        "message": warning_msg,
+                        "dropped_tasks": len(validated_plan.tool_calls)
+                        - MAX_TOOLS,
+                    }
+                )
+
+                validated_plan.tool_calls = validated_plan.tool_calls[
+                    :MAX_TOOLS
+                ]
+
             for tool in validated_plan.tool_calls:
                 sanitized_args = {}
                 for key, value in tool.args.items():
-                    sanitized_args[key] = value[0] if isinstance(value, list) and len(value) == 1 else value
-                
+                    sanitized_args[key] = (
+                        value[0]
+                        if isinstance(value, list) and len(value) == 1
+                        else value
+                    )
+
                 if tool.name == "draft_memory_update":
                     draft_text = str(sanitized_args).lower()
-                    subjective_words = ["prefers", "likes", "wants", "feels", "loves", "hates", "unorthodox"]
+                    subjective_words = [
+                        "prefers",
+                        "likes",
+                        "wants",
+                        "feels",
+                        "loves",
+                        "hates",
+                        "unorthodox",
+                    ]
                     if any(word in draft_text for word in subjective_words):
-                        await yield_queue.put({"type": "warning", "content": "Memory Bank rejected subjective fluff. Bypassing tool."})
-                        continue # Skips the database write entirely
-                                
-                await yield_queue.put({"type": "status", "content": f"Evaluating {tool.name} safety..."})
-                
-                # 1. Fetch the tool instance to read its tier
+                        await yield_queue.put(
+                            {
+                                "type": "warning",
+                                "content": "Memory Bank rejected subjective fluff. Bypassing tool.",
+                            }
+                        )
+                        continue
+
+                await yield_queue.put(
+                    {
+                        "type": "status",
+                        "content": f"Evaluating {tool.name} safety...",
+                    }
+                )
+
+                # Fetch the tool instance to read its tier
                 tool_instance = registry.get_tool(tool.name)
                 if not tool_instance:
-                    tool_results.append({"tool": tool.name, "status": "failed", "error": "Tool not found."})
+                    tool_results.append(
+                        {
+                            "tool": tool.name,
+                            "status": "failed",
+                            "error": "Tool not found.",
+                        }
+                    )
                     continue
 
-                # 2. ASK THE BLAST GATE FIRST
-                gate_evaluation = security_gate.evaluate_execution(tool.name, tool_instance.security_tier, sanitized_args)
-                
-                # 3. Handle Human-In-The-Loop (HITL) dynamically based on the gate's decision
+                # Ask the Blast Gate
+                gate_evaluation = security_gate.evaluate_execution(
+                    tool.name, tool_instance.security_tier, sanitized_args
+                )
+
+                # Handle Human-In-The-Loop (HITL) dynamically
                 if gate_evaluation["status"] == "HITL_REQUIRED":
-                    # Convert args to a string so you can read them in the UI modal
-                    command_str = str(sanitized_args) 
+                    command_str = str(sanitized_args)
                     action_id = auth_registry.create_action(command_str)
-                    
-                    # Trigger the UI Modal
-                    await yield_queue.put({
-                        "type": "auth_request",
-                        "action_id": action_id,
-                        "command": command_str
-                    })
-                    
-                    # PAUSE THE ENGINE
-                    approved = await auth_registry.wait_for_approval(action_id)
-                    
+
+                    # Trigger UI Modal
+                    await yield_queue.put(
+                        {
+                            "type": "auth_request",
+                            "action_id": action_id,
+                            "command": command_str,
+                        }
+                    )
+
+                    # Pause Engine
+                    approved = await auth_registry.wait_for_approval(
+                        action_id
+                    )
+
                     if not approved:
-                        await yield_queue.put({"type": "warning", "content": f"Execution of '{tool.name}' denied."})
-                        tool_results.append({"tool": tool.name, "status": "blocked", "error": "User denied authorization."})
-                        continue # Skip execution and move to the next tool
+                        await yield_queue.put(
+                            {
+                                "type": "warning",
+                                "content": f"Execution of '{tool.name}' denied.",
+                            }
+                        )
+                        tool_results.append(
+                            {
+                                "tool": tool.name,
+                                "status": "blocked",
+                                "error": "User denied authorization.",
+                            }
+                        )
+                        continue
 
                 elif not gate_evaluation["approved"]:
-                    # The gate hard-blocked it without asking for permission (e.g., unrecognized tier)
-                    tool_results.append({"tool": tool.name, "status": "blocked", "error": gate_evaluation.get("reason", "Unknown block")})
+                    tool_results.append(
+                        {
+                            "tool": tool.name,
+                            "status": "blocked",
+                            "error": gate_evaluation.get(
+                                "reason", "Unknown block"
+                            ),
+                        }
+                    )
                     continue
-                
-                # 4. If approved (either auto or manually), execute it
-                execution_payload = await execute_tool_async(tool.name, sanitized_args)
-                
-                # 2. INTERCEPTORS (Catch successful tools and push to frontend)
-                if tool.name == "task_manager" and execution_payload["status"] == "success":
+
+                # Execute if approved
+                execution_payload = await execute_tool_async(
+                    tool.name, sanitized_args
+                )
+
+                # Interceptors
+                if (
+                    tool.name == "task_manager"
+                    and execution_payload["status"] == "success"
+                ):
                     await yield_queue.put({"type": "task_update"})
-                
-                if tool.name == "draft_memory_update" and execution_payload["status"] == "success":
+
+                if (
+                    tool.name == "draft_memory_update"
+                    and execution_payload["status"] == "success"
+                ):
                     draft_text = execution_payload.get("data", "")
-                    
-                    # ---> THE FIX: Scrub the tag if the LLM stuffed it into the argument <---
-                    draft_text = draft_text.replace("__MEMORY_DRAFT__:", "").replace("__MEMORY_DRAFT__", "").strip()
-                    
-                    # Push the clean draft straight to the UI queue
-                    await yield_queue.put({"type": "memory_draft", "content": draft_text})
-                    
-                    # Mute the payload for the Synthesizer
-                    execution_payload["data"] = "System Notification: Memory successfully saved to ROM. Acknowledge this naturally."
-                
-                # Append the (now sanitized) payload to the results for the Synthesizer
+                    draft_text = (
+                        draft_text.replace("__MEMORY_DRAFT__:", "")
+                        .replace("__MEMORY_DRAFT__", "")
+                        .strip()
+                    )
+                    await yield_queue.put(
+                        {"type": "memory_draft", "content": draft_text}
+                    )
+                    execution_payload[
+                        "data"
+                    ] = "System Notification: Memory successfully saved to ROM. Acknowledge this naturally."
+
                 tool_results.append(execution_payload)
-                                
-                # 3. STATUS HANDLING (Process failures, blocks, and UI updates)
+
+                # Status Handling
                 if execution_payload["status"] == "failed":
-                    await yield_queue.put({"type": "warning", "content": f"Error: {execution_payload['error']}"})
+                    await yield_queue.put(
+                        {
+                            "type": "warning",
+                            "content": f"Error: {execution_payload['error']}",
+                        }
+                    )
                 elif execution_payload["status"] == "blocked":
-                    await yield_queue.put({"type": "warning", "content": f"Blocked: {execution_payload['error']}"})
+                    await yield_queue.put(
+                        {
+                            "type": "warning",
+                            "content": f"Blocked: {execution_payload['error']}",
+                        }
+                    )
                 elif execution_payload["status"] == "HITL_REQUIRED":
-                    await yield_queue.put({"type": "warning", "content": f"Authorization Required: {execution_payload['error']}"})
-                    # CRITICAL FIX: Force the Synthesizer to understand the task is NOT done
+                    await yield_queue.put(
+                        {
+                            "type": "warning",
+                            "content": f"Authorization Required: {execution_payload['error']}",
+                        }
+                    )
                     synthesizer_prompt += f"\n\n[SYSTEM OVERRIDE]: Tool '{tool.name}' is PENDING. Do NOT claim the task was completed. Relay the authorization request to the user exactly as provided."
                 else:
-                    await yield_queue.put({"type": "status", "content": f"Tool '{tool.name}' complete."})
+                    await yield_queue.put(
+                        {
+                            "type": "status",
+                            "content": f"Tool '{tool.name}' complete.",
+                        }
+                    )
 
-        # --- STEP 3: SYNTHESIZE --
-        
-        # 1. Anti-Hallucination Fallback
+        # --- STEP 3: SYNTHESIZE ---
         synthesizer_prompt += "\n\n[CRITICAL RULE]: If no explicit URL or search data is provided in the tool execution payload, synthesize a natural conversational response WITHOUT citing any sources or using placeholders like [Source Name] or [insert temp]."
-        
         synthesizer_prompt += "\n[CRITICAL RULE]: To save a persistent fact about the user or environment, you MUST use the 'draft_memory_update' tool. Do NOT append tags to your conversational response."
 
-        await yield_queue.put({"type": "status", "content": "Synthesizing final response..."})
-        
+        await yield_queue.put(
+            {"type": "status", "content": "Synthesizing final response..."}
+        )
+
         buffer = ""
-        trigger_words = ["__MEMORY_DRAFT__", "MEMORY_DRAFT:", "MEMORY_DRAFT"]
-        
-        async for token in VCore.synthesizer_stream(synthesizer_prompt, tool_results, clean_history):
+        trigger_words = [
+            "__MEMORY_DRAFT__",
+            "MEMORY_DRAFT:",
+            "MEMORY_DRAFT",
+        ]
+
+        async for token in VCore.synthesizer_stream(
+            synthesizer_prompt, tool_results, clean_history
+        ):
             buffer += token
-            
-            # 1. If we catch a full forbidden tag, scrub it out
+
             if any(trigger in buffer for trigger in trigger_words):
                 for trigger in trigger_words:
                     buffer = buffer.replace(trigger, "")
-                continue # Skip yielding to the UI this round to cleanly scrub
-                
-            # 2. Check if the buffer is currently building a forbidden word (partial match)
-            # We check if the end of the buffer matches the start of any trigger word
+                continue
+
             is_partial_match = False
             for trigger in trigger_words:
                 for i in range(1, len(trigger)):
@@ -281,18 +423,17 @@ async def run_cognitive_graph(prompt: str, yield_queue: asyncio.Queue, chat_hist
                         break
                 if is_partial_match:
                     break
-            
-            # 3. If it's safe and not a partial trigger, flush it to the UI
+
             if not is_partial_match:
                 await yield_queue.put({"type": "token", "content": buffer})
                 buffer = ""
-                
-        # 4. Flush anything left over after the stream closes
+
         if buffer:
             await yield_queue.put({"type": "token", "content": buffer})
-            
+
     except Exception as e:
-        await yield_queue.put({"type": "warning", "content": f"System Crash: {str(e)}"})
+        await yield_queue.put(
+            {"type": "warning", "content": f"System Crash: {str(e)}"}
+        )
     finally:
         await yield_queue.put({"type": "done", "content": ""})
-        

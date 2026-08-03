@@ -1,6 +1,7 @@
 import asyncio
+from typing import Any, Dict
 import uuid
-from typing import Dict, Any
+
 
 class AuthRegistry:
     def __init__(self):
@@ -12,7 +13,7 @@ class AuthRegistry:
         self._pending[action_id] = {
             "event": asyncio.Event(),
             "approved": False,
-            "command": command
+            "command": command,
         }
         return action_id
 
@@ -20,10 +21,10 @@ class AuthRegistry:
         """Pauses the calling task until event.set() is triggered by the API."""
         if action_id not in self._pending:
             return False
-        
+
         event = self._pending[action_id]["event"]
         await event.wait()  # <--- THE ENGINE PAUSES HERE
-        
+
         approved = self._pending[action_id]["approved"]
         del self._pending[action_id]  # Clean up memory after resumption
         return approved
@@ -35,6 +36,7 @@ class AuthRegistry:
             self._pending[action_id]["event"].set()  # <--- THE ENGINE RESUMES HERE
             return True
         return False
+
 
 # Single shared instance across your backend app
 auth_registry = AuthRegistry()

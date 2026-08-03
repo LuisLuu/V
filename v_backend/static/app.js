@@ -1,6 +1,7 @@
 /* ==========================================================================
    DOM ELEMENTS & STATE
    ========================================================================== */
+
 // Auth Elements
 const authOverlay = document.getElementById('auth-overlay');
 const appContainer = document.getElementById('app-container');
@@ -31,6 +32,16 @@ const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const mainAppContainer = document.querySelector('.app-container');
 const currentChatTitle = document.getElementById('current-chat-title');
 
+// View & Settings Elements
+const settingsView = document.getElementById('settings-view');
+const mainAppView = document.getElementById('app-container');
+const contextInput = document.getElementById('user-context-input');
+const viewArchiveBtn = document.getElementById('view-archive-btn');
+const archiveContainer = document.getElementById('archive-list-container');
+const darkModeToggle = document.getElementById('dark-mode-toggle');
+const clearHistoryBtn = document.getElementById('clear-history-btn');
+
+// State Variables
 let currentSessionId = null;
 let chatHistory = []; 
 let currentLogsDiv = null;
@@ -39,13 +50,20 @@ let isStreaming = false;
 let isSetupMode = false;
 let activeEventSource = null;
 
+// Initialize Security Gate on Load
+window.addEventListener('load', checkAuthStatus);
 
-toggleSidebarBtn.addEventListener('click', () => {
-    mainAppContainer.classList.toggle('sidebar-collapsed');
-});
+// Initialize Theme from Memory on Boot
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark-mode');
+    if (darkModeToggle) darkModeToggle.checked = true;
+}
+
+
 /* ==========================================================================
    AUTHENTICATION LOGIC (The Security Gate)
    ========================================================================== */
+
 async function checkAuthStatus() {
     try {
         const response = await fetch('/api/auth/status');
@@ -102,9 +120,11 @@ pinInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleAuth();
 });
 
+
 /* ==========================================================================
    SESSION LOGIC
    ========================================================================== */
+
 async function fetchSessions() {
     try {
         const response = await fetch('/api/sessions/');
@@ -121,7 +141,7 @@ async function fetchSessions() {
         data.sessions.forEach(session => {
             const container = document.createElement('div');
             container.style.cssText = `
-                position: relative; /* Critical for anchoring the dropdown */
+                position: relative;
                 display: flex; justify-content: space-between; align-items: center; 
                 padding: 8px 12px; margin-bottom: 8px; border-radius: 8px; cursor: pointer; 
                 background: ${session.id === currentSessionId ? '#E5E7EB' : 'transparent'};
@@ -136,12 +156,12 @@ async function fetchSessions() {
             `;
             titleSpan.onclick = () => switchSession(session.id, session.title || "New Chat");
 
-            // Context Menu Button (The "⋮")
+            // Context Menu Button
             const menuBtn = document.createElement('button');
             menuBtn.innerText = '⋮';
             menuBtn.style.cssText = `background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; color: #6B7280; font-weight: bold;`;
             
-            // The Dropdown Element
+            // Dropdown Element
             const dropdown = document.createElement('div');
             dropdown.className = 'session-dropdown';
             dropdown.innerHTML = `
@@ -152,7 +172,6 @@ async function fetchSessions() {
             // Toggle Dropdown Logic
             menuBtn.onclick = (e) => {
                 e.stopPropagation();
-                // Close any other open dropdowns first
                 document.querySelectorAll('.session-dropdown').forEach(d => d.style.display = 'none');
                 dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
             };
@@ -161,7 +180,7 @@ async function fetchSessions() {
             dropdown.querySelector('.rename-item').onclick = (e) => {
                 e.stopPropagation();
                 dropdown.style.display = 'none';
-                const newTitle = prompt("Enter new session name:", session.title); // Kept prompt here just for the text input, but it's triggered from the clean menu now
+                const newTitle = prompt("Enter new session name:", session.title);
                 if (newTitle) renameSession(session.id, newTitle);
             };
 
@@ -171,7 +190,7 @@ async function fetchSessions() {
                 if (confirm("Are you sure you want to delete this session?")) deleteSession(session.id);
             };
 
-            // Close dropdown if clicking anywhere else on the screen
+            // Close dropdown if clicking elsewhere
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target)) {
                     dropdown.style.display = 'none';
@@ -225,18 +244,18 @@ async function createNewSession() {
     }
 }
 
-async function switchSession(sessionId, sessionTitle = "V") {    // 1. Intercept and Abort Logic
+async function switchSession(sessionId, sessionTitle = "V") {
     if (isStreaming) {
         const confirmSwitch = confirm("V is currently responding. Switching sessions will abort the current response. Continue?");
         if (confirmSwitch) {
             if (activeEventSource) {
-                activeEventSource.close(); // Cleanly kill the HTTP connection
+                activeEventSource.close();
                 activeEventSource = null;
             }
-            toggleInput(true); // Unlock the text box
-            isStreaming = false; // Reset state
+            toggleInput(true);
+            isStreaming = false;
         } else {
-            return; // Abort the switch and let V finish
+            return;
         }
     }
 
@@ -259,7 +278,6 @@ async function switchSession(sessionId, sessionTitle = "V") {    // 1. Intercept
                     const row = document.createElement('div');
                     row.className = 'message-row v';
 
-                    // Parse stored logs if present, or show default history label
                     let logEntries = '';
                     if (msg.logs) {
                         try {
@@ -297,16 +315,20 @@ async function switchSession(sessionId, sessionTitle = "V") {    // 1. Intercept
 }
 
 newChatBtn.addEventListener('click', createNewSession);
+toggleSidebarBtn.addEventListener('click', () => {
+    mainAppContainer.classList.toggle('sidebar-collapsed');
+});
+
 
 /* ==========================================================================
    CHAT LOGIC
    ========================================================================== */
+
 function appendUserMessage(text) {
     const row = document.createElement('div');
     row.className = 'message-row user';
     row.innerHTML = `<div class="bubble">${text}</div>`;
     
-    // Remove welcome screen if it exists
     const welcome = document.getElementById('welcome-screen');
     if (welcome) welcome.remove();
 
@@ -342,12 +364,10 @@ function toggleInput(state) {
     userInput.disabled = !state;
     
     if (state) {
-        // UI is unlocked: Show Send, Hide Stop
         sendBtn.style.display = 'block';
         stopBtn.style.display = 'none';
         userInput.focus();
     } else {
-        // UI is locked (streaming): Hide Send, Show Stop
         sendBtn.style.display = 'none';
         stopBtn.style.display = 'block';
     }
@@ -356,31 +376,27 @@ function toggleInput(state) {
 function showAuthModal(commandText, intentText, actionId) {
     const modal = document.getElementById('command-auth-modal');
     const commandDisplay = document.getElementById('auth-command-display');
-    const intentDisplay = document.getElementById('auth-intent-display'); // Assuming you add this
+    const intentDisplay = document.getElementById('auth-intent-display');
     const approveBtn = document.getElementById('auth-approve-btn');
     const denyBtn = document.getElementById('auth-deny-btn');
 
-    // Defensive check: If the modal doesn't exist, log it and abort cleanly
     if (!modal || !commandDisplay || !approveBtn || !denyBtn) {
         console.error("Critical UI elements for the Auth Modal are missing from index.html.");
         return; 
     }
 
-    // Inject the raw command and the human intent
     commandDisplay.innerText = commandText;
     if (intentDisplay) {
         intentDisplay.innerText = intentText || "No intent provided.";
     }
     
-    modal.style.display = 'flex'; // This won't crash now!
+    modal.style.display = 'flex';
 
-    // Clear old listeners by cloning to prevent multiple triggers
     const newApproveBtn = approveBtn.cloneNode(true);
     const newDenyBtn = denyBtn.cloneNode(true);
     approveBtn.parentNode.replaceChild(newApproveBtn, approveBtn);
     denyBtn.parentNode.replaceChild(newDenyBtn, denyBtn);
 
-    // Wire up the new buttons
     newApproveBtn.addEventListener('click', () => submitCommandAuth(actionId, true));
     newDenyBtn.addEventListener('click', () => submitCommandAuth(actionId, false));
 }
@@ -388,7 +404,6 @@ function showAuthModal(commandText, intentText, actionId) {
 async function sendQuery(message) {
     if (!message.trim()) return;
     
-    // Auto-create session if none exists
     if (!currentSessionId) {
         await createNewSession();
     }
@@ -398,11 +413,9 @@ async function sendQuery(message) {
     setupVTurn();
     toggleInput(false); 
 
-    // --- SEND MESSAGE TO BACKEND ---
     const encodedMsg = encodeURIComponent(message);
     activeEventSource = new EventSource(`/stream_response?prompt=${encodedMsg}&session_id=${currentSessionId}`);
     
-    // ---> THE FIX: WE ADDED THE MESSAGE LISTENER HERE <---
     activeEventSource.onmessage = function(event) {
         try {
             const msg = JSON.parse(event.data);
@@ -421,25 +434,19 @@ async function sendQuery(message) {
                 currentChatTitle.innerText = msg.title;
                 fetchSessions(); 
             } else if (msg.type === "memory_draft") {
-                // Route the data to the new Memory Bank text area
                 const memoryBox = document.getElementById("learned-facts-input");
                 if (memoryBox) {
                     const currentText = memoryBox.value.trim();
-                    // Append as a clean bullet point
                     memoryBox.value = currentText ? `${currentText}\n- ${msg.content}` : `- ${msg.content}`;
                     if (currentLogsDiv) {
                         currentLogsDiv.innerHTML += `<div style="color:#10B981;">> [SYSTEM] New memory drafted to Memory Bank.</div>`;
                     }
                 }
-
             } else if (msg.type === "auth_request") {
                 if (currentLogsDiv) {
                     currentLogsDiv.innerHTML += `<div style="color:#F59E0B; font-weight:bold;">> [SYSTEM PAUSE] Authorization required for command execution.</div>`;
                 }
-                
-                // Pass the command, the intent, and the action ID
                 showAuthModal(msg.command, msg.intent, msg.action_id);
-
             } else if (msg.type === "done") {
                 if (activeEventSource) {
                     activeEventSource.close();
@@ -456,8 +463,6 @@ async function sendQuery(message) {
     };
 
     activeEventSource.addEventListener("error", function(event) {
-        // 1. If there is no data payload, this is a native network drop. 
-        // Let the onerror block handle it!
         if (!event.data) return; 
 
         let errorMessage = "System Exception triggered.";
@@ -481,7 +486,6 @@ async function sendQuery(message) {
         toggleInput(true); 
     });
 
-    // The native error handler
     activeEventSource.onerror = function() {
         if (activeEventSource) {
             activeEventSource.close();
@@ -493,26 +497,25 @@ async function sendQuery(message) {
         toggleInput(true);
     };
 }
+
 sendBtn.addEventListener('click', () => {
     if (userInput.value.trim() !== '') sendQuery(userInput.value);
 });
 
 stopBtn.addEventListener('click', () => {
     if (activeEventSource) {
-        activeEventSource.close(); // Kill the stream connection
+        activeEventSource.close();
         activeEventSource = null;
         
-        // Log the abort into the UI so the user knows it worked
         if (currentLogsDiv) {
             currentLogsDiv.innerHTML += `<div style="color:#EF4444;">> [USER OVERRIDE] Generation aborted.</div>`;
         }
         
-        // Ensure markdown is parsed for whatever partial text was generated
         if (currentTextDiv && typeof marked !== 'undefined') {
             currentTextDiv.innerHTML = marked.parse(currentTextDiv.innerHTML);
         }
         
-        toggleInput(true); // Unlock the UI
+        toggleInput(true);
     }
 });
 
@@ -520,9 +523,11 @@ userInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && userInput.value.trim() !== '') sendQuery(userInput.value);
 });
 
+
 /* ==========================================================================
    TASK LEDGER LOGIC
    ========================================================================== */
+
 async function fetchTasks() {
     try {
         const response = await fetch('/api/tasks/');
@@ -533,7 +538,6 @@ async function fetchTasks() {
         
         activeContainer.innerHTML = ''; 
         
-        // Filter out completed tasks so the sidebar only processes active ones
         const activeTasks = tasks.filter(task => task.status !== 'completed');
         
         if (activeTasks.length === 0) {
@@ -544,7 +548,6 @@ async function fetchTasks() {
         activeTasks.forEach(task => {
             const card = document.createElement('div');
             card.className = 'task-card';
-            // THE FIX: Added flex-style layout and the delete button
             card.innerHTML = `
                 <input type="checkbox" class="task-checkbox" onchange="toggleTaskStatus(${task.id}, this.checked)">
                 <div class="task-details">
@@ -555,7 +558,6 @@ async function fetchTasks() {
                 </div>
                 <button onclick="deleteTaskUI(${task.id})" style="background: none; border: none; color: #EF4444; cursor: pointer; font-size: 1.2rem; margin-left: auto; padding: 0 5px;" title="Delete Task">×</button>
             `;
-            
             activeContainer.appendChild(card);
         });
         
@@ -601,83 +603,14 @@ newTaskInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && newTaskInput.value.trim() !== '') createTask(newTaskInput.value);
 });
 
-// Initialize Security Gate
-window.addEventListener('load', checkAuthStatus);
 
-
-// --- VIEW ROUTING LOGIC ---
-const settingsView = document.getElementById('settings-view');
-const mainAppView = document.getElementById('app-container');
-const contextInput = document.getElementById('user-context-input');
-
-// Open Settings
-// document.getElementById('settings-btn').addEventListener('click', async () => {
-//     mainAppView.style.display = 'none';
-//     settingsView.style.display = 'block';
-    
-//     // Fetch context directly from the ROM Database
-//     try {
-//         const res = await fetch('/api/settings/context');
-//         const data = await res.json();
-//         contextInput.value = data.context || '';
-//     } catch (e) {
-//         console.error("Failed to load context:", e);
-//     }
-// });
-
-// Close Settings
-document.getElementById('close-settings-btn').addEventListener('click', () => {
-    settingsView.style.display = 'none';
-    mainAppView.style.display = 'grid'; // Restore the 3-column grid
-});
-
-// Save Context
-document.getElementById('save-settings-btn').addEventListener('click', async () => {
-    const btn = document.getElementById('save-settings-btn');
-    const originalText = btn.innerText;
-    btn.innerText = 'Saving...';
-    
-    try {
-        await fetch('/api/settings/context', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ context: contextInput.value })
-        });
-        
-        // Visual success feedback
-        btn.innerText = '✓ Saved';
-        btn.style.backgroundColor = '#10B981';
-    } catch (e) {
-        console.error("Failed to save context:", e);
-        btn.innerText = 'X Error';
-        btn.style.backgroundColor = '#EF4444';
-    }
-    
-    setTimeout(() => {
-        btn.innerText = originalText;
-        btn.style.backgroundColor = ''; // Reverts to CSS default
-    }, 1500);
-});
-
-// Safe Shutdown
-document.getElementById('exit-btn').addEventListener('click', () => {
-    if (confirm("Are you sure you want to trigger a system shutdown?")) {
-        fetch('/api/shutdown', { method: 'POST' }).catch(e => console.log("Server offline."));
-        document.body.innerHTML = `
-            <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
-                <h1 style="color: #374151; font-family: sans-serif;">V Engine Terminated. Safe to close tab.</h1>
-            </div>`;
-    }
-});
-
-// --- TASK ARCHIVE LOGIC ---
-const viewArchiveBtn = document.getElementById('view-archive-btn');
-const archiveContainer = document.getElementById('archive-list-container');
+/* ==========================================================================
+   TASK ARCHIVE LOGIC
+   ========================================================================== */
 
 async function loadArchive() {
     viewArchiveBtn.innerText = 'Loading...';
     try {
-        // Fetch strictly completed tasks
         const response = await fetch('/api/tasks/?status=completed');
         if (!response.ok) throw new Error("Failed to fetch archive");
         
@@ -690,7 +623,7 @@ async function loadArchive() {
             tasks.forEach(task => {
                 const card = document.createElement('div');
                 card.className = 'task-card';
-                card.style.opacity = '0.7'; // Dimmed for archive
+                card.style.opacity = '0.7';
                 
                 card.innerHTML = `
                     <input type="checkbox" class="task-checkbox" checked onchange="restoreTask(${task.id}, this.checked)">
@@ -700,7 +633,6 @@ async function loadArchive() {
                             <span class="priority-${task.priority}">${task.priority}</span> | ARCHIVED
                         </span>
                     </div>
-                    <!-- THE FIX: Injected the exact same delete button for the archive -->
                     <button onclick="deleteTaskUI(${task.id})" style="background: none; border: none; color: #EF4444; cursor: pointer; font-size: 1.2rem; margin-left: auto; padding: 0 5px;" title="Delete Task">×</button>
                 `;
                 archiveContainer.appendChild(card);
@@ -719,7 +651,6 @@ async function loadArchive() {
     }
 }
 
-// Toggle Archive Visibility
 viewArchiveBtn.addEventListener('click', () => {
     if (archiveContainer.style.display === 'flex') {
         archiveContainer.style.display = 'none';
@@ -730,9 +661,7 @@ viewArchiveBtn.addEventListener('click', () => {
     }
 });
 
-// Restore Task to Pending
 async function restoreTask(taskId, isChecked) {
-    // If user unchecks the box, status becomes 'pending'
     const newStatus = isChecked ? 'completed' : 'pending';
     try {
         await fetch(`/api/tasks/${taskId}`, {
@@ -741,7 +670,6 @@ async function restoreTask(taskId, isChecked) {
             body: JSON.stringify({ status: newStatus })
         });
         
-        // Refresh both the main sidebar and the archive view to keep states synced
         fetchTasks(); 
         loadArchive();
     } catch (error) {
@@ -749,8 +677,67 @@ async function restoreTask(taskId, isChecked) {
     }
 }
 
+async function deleteTaskUI(taskId) {
+    if (confirm("Are you sure you want to permanently delete this task?")) {
+        try {
+            await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+            fetchTasks(); 
+            if (archiveContainer.style.display === 'flex') {
+                loadArchive();
+            }
+        } catch (error) {
+            console.error("Failed to delete task:", error);
+        }
+    }
+}
+
+
+/* ==========================================================================
+   SETTINGS & ROUTING LOGIC
+   ========================================================================== */
+
+document.getElementById('close-settings-btn').addEventListener('click', () => {
+    settingsView.style.display = 'none';
+    mainAppView.style.display = 'grid';
+});
+
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('save-settings-btn');
+    const originalText = btn.innerText;
+    btn.innerText = 'Saving...';
+    
+    try {
+        await fetch('/api/settings/context', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: contextInput.value })
+        });
+        
+        btn.innerText = '✓ Saved';
+        btn.style.backgroundColor = '#10B981';
+    } catch (e) {
+        console.error("Failed to save context:", e);
+        btn.innerText = 'X Error';
+        btn.style.backgroundColor = '#EF4444';
+    }
+    
+    setTimeout(() => {
+        btn.innerText = originalText;
+        btn.style.backgroundColor = '';
+    }, 1500);
+});
+
+document.getElementById('exit-btn').addEventListener('click', () => {
+    if (confirm("Are you sure you want to trigger a system shutdown?")) {
+        fetch('/api/shutdown', { method: 'POST' }).catch(e => console.log("Server offline."));
+        document.body.innerHTML = `
+            <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
+                <h1 style="color: #374151; font-family: sans-serif;">V Engine Terminated. Safe to close tab.</h1>
+            </div>`;
+    }
+});
+
 async function submitCommandAuth(actionId, isApproved) {
-    // Hide the modal
     document.getElementById('command-auth-modal').style.display = 'none';
     
     if (!isApproved) {
@@ -765,7 +752,6 @@ async function submitCommandAuth(actionId, isApproved) {
         currentLogsDiv.innerHTML += `<div style="color:#10B981;">> [SYSTEM] Command authorized. Resuming execution...</div>`;
     }
 
-    // Send approval to backend
     await fetch('/api/authorize_command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -773,34 +759,6 @@ async function submitCommandAuth(actionId, isApproved) {
     });
 }
 
-async function deleteTaskUI(taskId) {
-    if (confirm("Are you sure you want to permanently delete this task?")) {
-        try {
-            await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-            // Refresh both views to keep the UI perfectly synced
-            fetchTasks(); 
-            if (document.getElementById('archive-list-container').style.display === 'flex') {
-                loadArchive();
-            }
-        } catch (error) {
-            console.error("Failed to delete task:", error);
-        }
-    }
-}
-
-/* ==========================================================================
-   SAFE ZONE SETTINGS (UI Only)
-   ========================================================================== */
-const darkModeToggle = document.getElementById('dark-mode-toggle');
-const clearHistoryBtn = document.getElementById('clear-history-btn');
-
-// 1. Initialize Theme from Memory on Boot
-if (localStorage.getItem('theme') === 'dark') {
-    document.body.classList.add('dark-mode');
-    if (darkModeToggle) darkModeToggle.checked = true;
-}
-
-// 2. Listen for Theme Toggle Changes
 if (darkModeToggle) {
     darkModeToggle.addEventListener('change', (e) => {
         if (e.target.checked) {
@@ -813,27 +771,23 @@ if (darkModeToggle) {
     });
 }
 
-// 3. Clear Chat DOM Logic
 if (clearHistoryBtn) {
     clearHistoryBtn.addEventListener('click', () => {
         const confirmWipe = confirm("This will clear the current screen. Backend chat history is NOT deleted. Proceed?");
         if (confirmWipe) {
             const chatLogContainer = document.getElementById('chat-log');
             if (chatLogContainer) {
-                // Restore the welcome screen just like in switchSession()
                 chatLogContainer.innerHTML = `<div class="welcome-screen" id="welcome-screen">
                     <h1 style="color: var(--text-main, #111827);">Display Cleared</h1>
                     <p style="color: var(--text-muted, #6B7280);">DOM history wiped. Ready for new input.</p>
                 </div>`;
             }
-            // Close settings automatically to show the clean slate
-            document.getElementById('settings-view').style.display = 'none';
-            document.getElementById('app-container').style.display = 'grid';
+            settingsView.style.display = 'none';
+            mainAppView.style.display = 'grid';
         }
     });
 }
 
-// 1. Fetch memory when opening the settings panel
 document.getElementById('settings-btn').addEventListener('click', async () => {
     mainAppView.style.display = 'none';
     settingsView.style.display = 'block';
@@ -851,7 +805,6 @@ document.getElementById('settings-btn').addEventListener('click', async () => {
     }
 });
 
-// 2. Save memory changes from the textarea
 saveMemoryBtn.addEventListener('click', async () => {
     const originalText = saveMemoryBtn.innerText;
     saveMemoryBtn.innerText = 'Saving...';

@@ -1,6 +1,10 @@
 import os
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")) 
+
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 LIBRARY_PATH = os.path.join(PROJECT_ROOT, "library")
+
 
 def get_v_offline_prompt() -> str:
     return f"""

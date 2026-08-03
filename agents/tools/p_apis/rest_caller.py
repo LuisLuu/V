@@ -1,25 +1,30 @@
 # v_core/domains/tools/p_apis/rest_caller.py
+
 import json
+
 from agents.tools.preconditions import BaseTool, SecurityTier
 
+
 class RESTCaller(BaseTool):
+    """A universal adapter to interact with external REST APIs.
+
+    Handles GET, POST, PUT, DELETE with custom headers and JSON payloads[cite: 9].
     """
-    A universal adapter to interact with external REST APIs.
-    Handles GET, POST, PUT, DELETE with custom headers and JSON payloads.
-    """
+
     def __init__(self):
         self.name = "rest_caller"
-        self.description = "Makes HTTP requests to REST APIs. Use this to pull schedules, send emails, or interact with web services."
-        # Because this tool can POST/DELETE data externally, it must be carefully monitored.
-        self.security_tier = SecurityTier.WRITE 
+        self.description = "Makes HTTP requests to REST APIs. Use this to pull schedules, send emails, or interact with web services[cite: 9]."
+        # Because this tool can POST/DELETE data externally, it must be carefully monitored[cite: 9].
+        self.security_tier = SecurityTier.WRITE
         self.preconditions = [self._check_requests]
-        # Protects against massive JSON dumps from poorly optimized endpoints
+        # Protects against massive JSON dumps from poorly optimized endpoints[cite: 9]
         self.max_chars = 10000
 
     def _check_requests(self) -> bool:
-        """Sensor: Verifies HTTP library is available."""
+        """Sensor: Verifies HTTP library is available[cite: 9]."""
         try:
             import requests
+
             return True
         except ImportError:
             return False
@@ -36,33 +41,37 @@ class RESTCaller(BaseTool):
                         "method": {
                             "type": "string",
                             "enum": ["GET", "POST", "PUT", "DELETE"],
-                            "description": "The standard HTTP method to use."
+                            "description": "The standard HTTP method to use[cite: 9].",
                         },
                         "url": {
                             "type": "string",
-                            "description": "The exact API endpoint URL."
+                            "description": "The exact API endpoint URL[cite: 9].",
                         },
                         "headers": {
                             "type": "string",
-                            "description": "A JSON-formatted string of HTTP headers (e.g., for Authorization Bearer tokens)."
+                            "description": "A JSON-formatted string of HTTP headers (e.g., for Authorization Bearer tokens)[cite: 9].",
                         },
                         "payload": {
                             "type": "string",
-                            "description": "A JSON-formatted string representing the request body (for POST/PUT)."
-                        }
+                            "description": "A JSON-formatted string representing the request body (for POST/PUT)[cite: 9].",
+                        },
                     },
-                    "required": ["method", "url"]
-                }
-            }
+                    "required": ["method", "url"],
+                },
+            },
         }
 
-    def execute(self, method: str, url: str, headers: str = "{}", payload: str = "{}") -> str:
-        """
-        The Universal Execution Pipeline.
-        """
+    def execute(
+        self,
+        method: str,
+        url: str,
+        headers: str = "{}",
+        payload: str = "{}",
+    ) -> str:
+        """The Universal Execution Pipeline[cite: 9]."""
         import requests
-        
-        # 1. Parse the strings back into dictionaries
+
+        # 1. Parse the strings back into dictionaries[cite: 9]
         try:
             parsed_headers = json.loads(headers)
             parsed_payload = json.loads(payload)
@@ -70,36 +79,41 @@ class RESTCaller(BaseTool):
             return f"SYSTEM_ERROR: Invalid JSON provided for headers or payload. {str(e)}"
 
         try:
-            # 2. Fire the Request
+            # 2. Fire the Request[cite: 9]
             response = requests.request(
                 method=method.upper(),
                 url=url,
                 headers=parsed_headers,
-                json=parsed_payload if method.upper() in ["POST", "PUT", "PATCH"] else None,
-                timeout=15
+                json=parsed_payload
+                if method.upper() in ["POST", "PUT", "PATCH"]
+                else None,
+                timeout=15,
             )
-            
-            # 3. Handle specific HTTP error codes cleanly
+
+            # 3. Handle specific HTTP error codes cleanly[cite: 9]
             try:
                 response.raise_for_status()
             except requests.exceptions.HTTPError as e:
-                # We return the first 500 chars of the error text because APIs often 
-                # explain *why* it failed in the body (e.g., "Invalid Token").
+                # We return the first 500 chars of the error text because APIs often
+                # explain *why* it failed in the body (e.g., "Invalid Token")[cite: 9].
                 return f"API_ERROR: {str(e)} - Server Response: {response.text[:500]}"
 
-            # 4. Extract and Truncate
+            # 4. Extract and Truncate[cite: 9]
             try:
-                # Try to format as clean JSON if possible
+                # Try to format as clean JSON if possible[cite: 9]
                 data = response.json()
                 output = json.dumps(data, indent=2)
             except ValueError:
                 output = response.text
 
             if len(output) > self.max_chars:
-                # For JSON, we use a Head Cut (keeping the top). If we cut the bottom off, 
-                # V can at least see the top-level keys and structure to reformulate her query.
-                output = output[:self.max_chars] + f"\n...[SYSTEM WARNING: Payload truncated at {self.max_chars} chars.]"
-            
+                # For JSON, we use a Head Cut (keeping the top). If we cut the bottom off,
+                # V can at least see the top-level keys and structure to reformulate her query[cite: 9].
+                output = (
+                    output[: self.max_chars]
+                    + f"\n...[SYSTEM WARNING: Payload truncated at {self.max_chars} chars.]"
+                )
+
             return output
 
         except requests.exceptions.Timeout:

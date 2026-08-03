@@ -1,14 +1,16 @@
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from agents.tools.filesystem.directory_scanner import DirectoryScanner
 from agents.tools.filesystem.file_reader import FileReader
-from agents.tools.system.command_executor import CommandExecutor
-from agents.tools.web.web_scraper import WebScraper
 from agents.tools.p_apis.rest_caller import RESTCaller
-from agents.tools.web.search_api import SearchAPI
-from agents.tools.system.task_tool import TaskManagerTool
 from agents.tools.preconditions import BaseTool
 from agents.tools.system.bypass_tool import ConversationalBypass
+from agents.tools.system.command_executor import CommandExecutor
 from agents.tools.system.memory_tool import MemoryDraftTool
+from agents.tools.system.task_tool import TaskManagerTool
+from agents.tools.web.search_api import SearchAPI
+from agents.tools.web.web_scraper import WebScraper
+
 
 class ToolRegistry:
     def __init__(self):
@@ -16,7 +18,7 @@ class ToolRegistry:
             "directory_scanner": DirectoryScanner(),
             "file_reader": FileReader(),
             "command_executor": CommandExecutor(),
-            "search_api": SearchAPI(),             
+            "search_api": SearchAPI(),
             "web_scraper": WebScraper(),
             "rest_caller": RESTCaller(),
             "task_manager": TaskManagerTool(),
@@ -40,13 +42,16 @@ class ToolRegistry:
     def get_all_tool_descriptions(self) -> str:
         if not self.tools:
             return "No tools currently registered."
-            
+
         descriptions = []
         for name, tool in self.tools.items():
-            desc = getattr(tool, 'description', getattr(tool, '__doc__', '')).strip()
+            desc = getattr(
+                tool, "description", getattr(tool, "__doc__", "")
+            ).strip()
             descriptions.append(f"- {name}: {desc}")
-            
+
         return "\n".join(descriptions)
+
 
 # Export singleton instance
 registry = ToolRegistry()
