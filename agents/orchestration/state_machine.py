@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 import inspect
-import agents.orchestration.sub_agents
 
 from pathlib import Path
 from agents.tools.tool_registry import registry

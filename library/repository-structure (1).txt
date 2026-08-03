@@ -1,0 +1,74 @@
+├── agents
+│   ├── harness
+│   │   ├── blast_gates.py
+│   │   └── sensors.py
+│   ├── orchestration
+│   │   ├── auth_registry.py
+│   │   ├── schemas.py
+│   │   ├── state_machine.py
+│   │   ├── sub_agents.py
+│   │   └── v_core.py
+│   ├── tools
+│   │   ├── filesystem
+│   │   │   ├── directory_scanner.py
+│   │   │   └── file_reader.py
+│   │   ├── p_apis
+│   │   │   └── rest_caller.py
+│   │   ├── system
+│   │   │   ├── bypass_tool.py
+│   │   │   ├── command_executor.py
+│   │   │   ├── memory_tool.py
+│   │   │   ├── task_agent.py
+│   │   │   └── task_tool.py
+│   │   ├── web
+│   │   │   ├── search_api.py
+│   │   │   └── web_scraper.py
+│   │   ├── preconditions.py
+│   │   └── tool_registry.py
+│   ├── compaction.py
+│   └── router.py
+├── library
+│   ├── course_schedule.csv
+│   └── student_profile.json
+├── memory
+│   ├── database.py
+│   ├── ram_window.py
+│   ├── rom.db-shm
+│   ├── rom.db-wal
+│   └── sqlite_rom.py
+├── prompts
+│   └── core_prompts.py
+├── Report
+│   ├── ex_material
+│   │   └── image.png
+│   ├── Proposal
+│   │   └── Proposal
+│   │       ├── _Proposal Template.doc
+│   │       ├── Proposal Guide.doc
+│   │       ├── Proposal Sample.docx
+│   │       └── Proposal Slide.pptx
+│   ├── template.txt
+│   ├── Undergraduate Project Report Structure Guide.docx
+│   └── V_Mat.drawio
+├── v_backend
+│   ├── routers
+│   │   ├── auth_routes.py
+│   │   ├── chat_routes.py
+│   │   ├── event_streams.py
+│   │   ├── settings_router.py
+│   │   └── task_routes.py
+│   ├── static
+│   │   ├── app.js
+│   │   ├── index.html
+│   │   ├── Inter-Italic-VariableFont_opsz,wght.ttf
+│   │   ├── Inter-VariableFont_opsz,wght.ttf
+│   │   ├── marked.min.js
+│   │   └── styles.css
+│   ├── dependencies.py
+│   └── main.py
+├── .gitignore
+├── Project_context.md
+├── README.md
+├── requirements.txt
+├── start_unix.sh
+└── start_windows.bat

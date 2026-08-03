@@ -24,6 +24,8 @@ const newTaskInput = document.getElementById('new-task-input');
 const addTaskBtn = document.getElementById('add-task-btn');
 const sessionList = document.getElementById('session-list');
 const newChatBtn = document.getElementById('new-chat-btn');
+const memoryInput = document.getElementById('learned-facts-input');
+const saveMemoryBtn = document.getElementById('save-memory-btn');
 
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const mainAppContainer = document.querySelector('.app-container');
@@ -201,7 +203,7 @@ async function deleteSession(sessionId) {
         currentSessionId = null;
         chatLog.innerHTML = `<div class="welcome-screen" id="welcome-screen">
             <h1>Hello!</h1>
-            <p>What are we building today?</p>
+            <p>What is on your mind today?</p>
         </div>`;
     }
     fetchSessions();
@@ -215,7 +217,7 @@ async function createNewSession() {
         
         chatLog.innerHTML = `<div class="welcome-screen" id="welcome-screen">
             <h1>Hello!</h1>
-            <p>What are we building today?</p>
+            <p>What is on your mind today?</p>
         </div>`;
         fetchSessions();
     } catch (error) {
@@ -286,7 +288,7 @@ async function switchSession(sessionId, sessionTitle = "V") {    // 1. Intercept
         } else {
              chatLog.innerHTML = `<div class="welcome-screen" id="welcome-screen">
                 <h1>Hello!</h1>
-                <p>What are we building today?</p>
+                <p>What is on your mind today?</p>
             </div>`;
         }
     } catch (err) {
@@ -609,19 +611,19 @@ const mainAppView = document.getElementById('app-container');
 const contextInput = document.getElementById('user-context-input');
 
 // Open Settings
-document.getElementById('settings-btn').addEventListener('click', async () => {
-    mainAppView.style.display = 'none';
-    settingsView.style.display = 'block';
+// document.getElementById('settings-btn').addEventListener('click', async () => {
+//     mainAppView.style.display = 'none';
+//     settingsView.style.display = 'block';
     
-    // Fetch context directly from the ROM Database
-    try {
-        const res = await fetch('/api/settings/context');
-        const data = await res.json();
-        contextInput.value = data.context || '';
-    } catch (e) {
-        console.error("Failed to load context:", e);
-    }
-});
+//     // Fetch context directly from the ROM Database
+//     try {
+//         const res = await fetch('/api/settings/context');
+//         const data = await res.json();
+//         contextInput.value = data.context || '';
+//     } catch (e) {
+//         console.error("Failed to load context:", e);
+//     }
+// });
 
 // Close Settings
 document.getElementById('close-settings-btn').addEventListener('click', () => {
@@ -830,3 +832,46 @@ if (clearHistoryBtn) {
         }
     });
 }
+
+// 1. Fetch memory when opening the settings panel
+document.getElementById('settings-btn').addEventListener('click', async () => {
+    mainAppView.style.display = 'none';
+    settingsView.style.display = 'block';
+    
+    try {
+        const resContext = await fetch('/api/settings/context');
+        const dataContext = await resContext.json();
+        contextInput.value = dataContext.context || '';
+
+        const resMemory = await fetch('/api/memory');
+        const dataMemory = await resMemory.json();
+        memoryInput.value = dataMemory.facts || '';
+    } catch (e) {
+        console.error("Failed to load settings data:", e);
+    }
+});
+
+// 2. Save memory changes from the textarea
+saveMemoryBtn.addEventListener('click', async () => {
+    const originalText = saveMemoryBtn.innerText;
+    saveMemoryBtn.innerText = 'Saving...';
+    
+    try {
+        await fetch('/api/memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ facts: memoryInput.value })
+        });
+        saveMemoryBtn.innerText = '✓ Saved';
+        saveMemoryBtn.style.backgroundColor = '#10B981';
+    } catch (e) {
+        console.error("Failed to save memory:", e);
+        saveMemoryBtn.innerText = 'X Error';
+        saveMemoryBtn.style.backgroundColor = '#EF4444';
+    }
+    
+    setTimeout(() => {
+        saveMemoryBtn.innerText = originalText;
+        saveMemoryBtn.style.backgroundColor = '';
+    }, 1500);
+});

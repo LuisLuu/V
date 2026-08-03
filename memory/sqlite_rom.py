@@ -151,6 +151,14 @@ class SQLiteROM:
                     )
                 """)
 
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS dynamic_memory (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        fact TEXT NOT NULL,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
                 # Ensure the row exists so we can always UPDATE it
                 cursor.execute("INSERT OR IGNORE INTO user_settings (id, context) VALUES (1, '')")
                 
@@ -349,18 +357,44 @@ class SQLiteROM:
                 cursor.execute("INSERT OR REPLACE INTO user_settings (id, context) VALUES (1, ?)", (context,))
         logger.info("[ROM UPDATE] User context preferences updated.")
 
-    def get_learned_facts(self) -> str:
-        """Retrieves V's autonomous memory bank."""
+    def get_learned_facts(self, limit: int = 20) -> str:
+        """Retrieves V's autonomous memory bank and formats it for the LLM."""
+        from contextlib import closing
         with closing(self._get_connection()) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT learned_facts FROM user_settings WHERE id = 1")
-            row = cursor.fetchone()
-            return row["learned_facts"] if row and row["learned_facts"] else ""
+            # Fetch the most recent facts
+            cursor.execute(
+                "SELECT fact FROM dynamic_memory ORDER BY timestamp DESC LIMIT ?", 
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            
+            if not rows:
+                return "No dynamic facts learned yet."
+                
+            # Compile them into a bulleted string for the system prompt
+            return "\n".join([f"- {row['fact']}" for row in rows])
 
-    def update_learned_facts(self, facts: str):
-        """Overwrites V's autonomous memory bank."""
+    def insert_dynamic_fact(self, fact: str, timestamp: str | None = None):
+        """Inserts a new autonomous memory as a distinct row."""
+        from contextlib import closing
         with closing(self._get_connection()) as conn:
             with conn:
                 cursor = conn.cursor()
-                cursor.execute("UPDATE user_settings SET learned_facts = ? WHERE id = 1", (facts,))
-        logger.info("[ROM UPDATE] Learned facts updated.")
+                if timestamp:
+                    cursor.execute("INSERT INTO dynamic_memory (fact, timestamp) VALUES (?, ?)", (fact, timestamp))
+                else:
+                    cursor.execute("INSERT INTO dynamic_memory (fact) VALUES (?)", (fact,))
+        logger.info(f"[ROM WRITE] New dynamic fact saved: {fact}")
+
+    def save_learned_facts_bulk(self, facts_text: str):
+        """Replaces dynamic memory with the edited block from the UI settings."""
+        with closing(self._get_connection()) as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM dynamic_memory")
+                for line in facts_text.split("\n"):
+                    clean_line = line.replace("-", "").strip()
+                    if clean_line:
+                        cursor.execute("INSERT INTO dynamic_memory (fact) VALUES (?)", (clean_line,))
+        logger.info("[ROM UPDATE] Dynamic memory bulk updated from UI.")

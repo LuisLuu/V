@@ -39,10 +39,3 @@ async def get_learned_facts():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@router.post("/learned_facts")
-async def update_learned_facts(payload: LearnedFactsPayload):
-    try:
-        rom_db.update_learned_facts(payload.learned_facts)
-        return {"status": "success", "message": "Memory Bank saved."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

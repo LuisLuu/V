@@ -17,7 +17,7 @@ class MemoryDraftTool(BaseTool):
                     "properties": {
                         "proposed_update": {
                             "type": "string",
-                            "description": "The concise, declarative statement to add to the user's Behavioral Context."
+                            "description": "A concise, third-person declarative fact about the user. ALWAYS format as 'User [fact]' (e.g., 'User is allergic to peanuts', 'User does not have an oven'). NEVER use 'I' or 'you'."
                         }
                     },
                     "required": ["proposed_update"]
@@ -29,10 +29,12 @@ class MemoryDraftTool(BaseTool):
         # 1. Instantiate the database connection
         rom = SQLiteROM()
         
-        # 2. Fetch, append, and save
-        current_facts = rom.get_learned_facts()
-        updated_facts = current_facts + f"\n- {proposed_update}" if current_facts else f"- {proposed_update}"
-        rom.update_learned_facts(updated_facts)
+        # 2. Insert as a distinct row instead of a massive string concatenation
+        import datetime
+        timestamp = datetime.datetime.now().isoformat()
+        
+        # Assuming you update SQLiteROM to have an 'insert_dynamic_fact' method:
+        rom.insert_dynamic_fact(proposed_update, timestamp) 
         
         # 3. Return the string so the Orchestrator can catch it and push to the UI
         return (

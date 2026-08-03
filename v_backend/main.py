@@ -114,4 +114,13 @@ def shutdown():
     
     return {"message": "V Engine Terminated."}
 
+@app.get("/api/memory")
+async def get_memory_route():
+    facts_str = db.get_learned_facts(limit=50)
+    return {"facts": facts_str}
+
+@app.post("/api/memory")
+async def update_memory_route(payload: dict):
+    db.save_learned_facts_bulk(payload.get("facts", ""))
+    return {"status": "success"}
 # uvicorn v_backend.main:app --host 127.0.0.1 --port 8000
