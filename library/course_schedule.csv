@@ -1,0 +1,6 @@
+Course_Code,Course_Name,Day,Time,Room,Instructor,Type
+PRO101,Final P1,Monday,08:00-10:15,Lab 4A,Dr. Nguyen,Practical
+SWE201,Software Engineering Principles,Wednesday,13:00-15:15,Room 202,Prof. Tran,Lecture
+SWE201,Software Engineering Principles,Friday,13:00-15:15,Lab 2B,Prof. Tran,Practical
+DBI202,Database Systems,Tuesday,10:30-12:45,Room 105,Dr. Le,Lecture
+PRJ301,Project Management,Thursday,08:00-11:15,Room 301,Prof. Pham,Seminar

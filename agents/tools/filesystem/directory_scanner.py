@@ -49,35 +49,57 @@ class DirectoryScanner(BaseTool):
             }
         }
 
-    def execute(self, directory_path: str = ".", max_depth: int = 1, **kwargs) -> Dict[str, Any]:
-        """
-        The physical action of scanning the drive. 
-        Returns structured JSON rather than a messy string.
-        """
-        # Catch LLM hallucinations where it uses 'path' instead of 'directory_path'
-        if 'path' in kwargs:
-            directory_path = kwargs['path']
+    def execute(self, directory_path: str = ".", max_depth: int = 2, max_items: int = 100, **kwargs) -> dict:
+        import os # Local import to ensure availability during execution
+        
+        # Hardened LLM hallucination fallback (sometimes they pass positional args as kwargs)
+        target_path = kwargs.get('path', directory_path)
 
-        if not os.path.exists(directory_path):
-            return {"status": "error", "message": f"Directory not found: {directory_path}"}
-        
-        structure = {}
-        
-        try:
-            # We use os.scandir for high-performance, low-latency directory traversal
-            for entry in os.scandir(directory_path):
-                if entry.is_dir():
-                    structure[entry.name] = "DIR"
-                elif entry.is_file():
-                    structure[entry.name] = "FILE"
-                    
-            return {
-                "status": "success",
-                "path": directory_path,
-                "contents": structure
-            }
+        if not os.path.exists(target_path):
+            return {"status": "error", "message": f"Directory not found: {target_path}"}
+
+        item_count = 0
+
+        def scan_recursive(current_path, current_depth) -> dict:
+            nonlocal item_count
             
-        except PermissionError:
-            return {"status": "error", "message": f"Permission denied accessing: {directory_path}"}
-        except Exception as e:
-             return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+            # Consistent return type: always a dict with a notice, never a raw string
+            if current_depth > max_depth:
+                return {"_notice": "MAX_DEPTH_REACHED"}
+            
+            structure = {}
+            try:
+                # Using 'with' ensures the OS safely closes the directory iterator 
+                # preventing memory/file descriptor leaks during massive scans
+                with os.scandir(current_path) as it:
+                    for entry in it:
+                        if item_count >= max_items:
+                            structure["_notice"] = f"TRUNCATED: Exceeded {max_items} items to protect context window."
+                            return structure
+                            
+                        item_count += 1
+                        
+                        if entry.is_dir():
+                            structure[entry.name] = {
+                                "type": "DIR",
+                                "contents": scan_recursive(entry.path, current_depth + 1)
+                            }
+                        elif entry.is_file():
+                            structure[entry.name] = "FILE"
+                            
+            except PermissionError:
+                 return {"_notice": "PERMISSION_DENIED"}
+            except Exception as e:
+                 return {"_notice": f"ERROR: {str(e)}"}
+                 
+            return structure
+
+        # Initialize the recursion
+        scanned_data = scan_recursive(target_path, 1)
+
+        return {
+            "status": "success",
+            "path": target_path,
+            "total_items_scanned": item_count,
+            "contents": scanned_data
+        }

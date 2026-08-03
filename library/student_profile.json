@@ -1,0 +1,33 @@
+{
+  "institution": "FPT Education",
+  "portal_status": "active",
+  "student_record": {
+    "id": "GCS220316",
+    "full_name": "Lưu Trương Thế Quyền",
+    "major": "Information Technology",
+    "academic_standing": "Good"
+  },
+  "current_semester": {
+    "term": "Spring 2026",
+    "enrolled_courses": [
+      {
+        "course_code": "PRO101",
+        "course_name": "Final P1",
+        "credits": 3,
+        "instructor": "Dr. Nguyen",
+        "status": "In Progress"
+      },
+      {
+        "course_code": "SWE201",
+        "course_name": "Software Engineering Principles",
+        "credits": 4,
+        "instructor": "Prof. Tran",
+        "status": "In Progress"
+      }
+    ]
+  },
+  "outstanding_requirements": [
+    "Submit Final P1 Project Proposal",
+    "Complete IT Security Module"
+  ]
+}

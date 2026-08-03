@@ -5,7 +5,7 @@ from agents.tools.preconditions import BaseTool, SecurityTier
 class FileReader(BaseTool):
     """
     Reads the contents of a local file and returns it as a string.
-    Includes a safety truncate to prevent blowing out the LLM context window.
+    Includes a safety truncate and metadata wrapper to prevent blowing out the LLM context window.
     """
     def __init__(self):
         self.name = "file_reader"
@@ -45,7 +45,7 @@ class FileReader(BaseTool):
 
     def execute(self, file_path: str) -> str:
         """
-        The physical action of cracking the file open.
+        The physical action of cracking the file open and appending metadata context.
         """
         if not os.path.exists(file_path):
             return f"SYSTEM_ERROR: File not found at {file_path}"
@@ -58,13 +58,20 @@ class FileReader(BaseTool):
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 
-            # The Context Window Protector
+            # The Context Window Protector with Metadata Wrap
+            status = "Read Fully"
             if len(content) > self.max_chars:
-                return (content[:self.max_chars] + 
-                        f"\n\n...[SYSTEM WARNING: File truncated. Exceeds {self.max_chars} characters. "
-                        "Context window protected.]")
-            
-            return content
+                content = content[:self.max_chars]
+                status = f"TRUNCATED for safety (Max {self.max_chars} chars)"
+                
+            return f"""
+--- FILE METADATA ---
+Path: {file_path}
+Size: {os.path.getsize(file_path)} bytes
+Status: {status}
+---------------------
+{content}
+"""
             
         except UnicodeDecodeError:
             # Catches attempts to read images, compiled firmware, or proprietary binaries

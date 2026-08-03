@@ -2,6 +2,8 @@ import json
 import re
 import aiohttp
 import inspect
+import os
+
 from typing import Dict, Any
 from agents.tools.tool_registry import registry
 from agents.tools.preconditions import BaseTool, SecurityTier
