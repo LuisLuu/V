@@ -120,7 +120,6 @@ async def run_cognitive_graph(
 
         # --- STEP 0: CONTEXT ROUTING ---
         retrieved_context = None
-        # Heuristic Bypass: Only run the heavy DB search if prompt has semantic weight
         if len(prompt.split()) > 3 and len(prompt) > 15:
             retrieved_context = await asyncio.to_thread(
                 router.evaluate_and_fetch, prompt
@@ -129,7 +128,6 @@ async def run_cognitive_graph(
         planner_prompt = prompt
         synthesizer_prompt = prompt
 
-        # Inject memory into both prompts if the router found something
         if retrieved_context:
             memory_injection = f"\n\n[RECALLED PAST MEMORY]: {retrieved_context}"
             planner_prompt += memory_injection
@@ -145,7 +143,6 @@ async def run_cognitive_graph(
             task_agent = TaskAgent()
             all_tasks = await asyncio.to_thread(task_agent.list_tasks)
 
-            # Filter out completed tasks so V only sees what needs to be done
             active_tasks = [
                 t for t in all_tasks if t["status"] in ["pending", "in_progress"]
             ]
@@ -164,10 +161,12 @@ async def run_cognitive_graph(
             state_injection = f"\n\n[CURRENT SYSTEM TASKS]:\n{task_list_str}"
             state_injection += "\n[CRITICAL RULE]: When asked to update or delete a task without an explicit ID, you must use the chat history to deduce which task the user means, find its ID in the list above, and INCLUDE the integer in your tool call."
             state_injection += "\n[BATCH PROCESSING RULE]: If the user updates or mentions multiple tasks in a single sentence (e.g., 'I bought the chicken and the tree'), you MUST output a separate tool call for EACH item in the 'tool_calls' array. Never ignore secondary items."
+            
+            # 1. ONLY feed active tasks to the Planner for routing execution
             planner_prompt += "\n[CRITICAL RULE]: If the user asks a general knowledge, research, or comparative question (e.g., hardware differences, definitions), DO NOT use local file system tools. Proceed with an empty tool plan and synthesize the answer from your training data or a web search."
-
             planner_prompt += state_injection
-            synthesizer_prompt += state_injection
+
+            # Do NOT attach state_injection to synthesizer_prompt! Keeps V from nagging.
         except Exception as e:
             await yield_queue.put(
                 {"type": "warning", "content": f"Ledger Sync Failed: {e}"}
@@ -184,7 +183,6 @@ async def run_cognitive_graph(
         )
 
         try:
-            # Clean the payload (keep regex to handle markdown wrappers)
             clean_payload = re.sub(
                 r"```(?:json)?\n?(.*?)\n?```",
                 r"\1",
@@ -192,41 +190,31 @@ async def run_cognitive_graph(
                 flags=re.DOTALL,
             ).strip()
 
-            # Coerce the string directly into our Pydantic model
             validated_plan = CognitivePlan.model_validate_json(clean_payload)
 
         except ValidationError as e:
-            error_msg = f"Critical error: Planner output failed schema validation. Details: {str(e)}"
-            await yield_queue.put({"type": "warning", "content": error_msg})
+            # Send technical detail to the dev logs/UI, but hide raw stack trace from Synthesizer
+            await yield_queue.put({"type": "warning", "content": f"Planner schema validation failed: {str(e)}"})
             validated_plan = CognitivePlan(tool_calls=[])
-            tool_results.append({"status": "failed", "error": error_msg})
+            tool_results.append({"status": "failed", "error": "Planner execution failed internally."})
         except json.JSONDecodeError:
-            error_msg = "Critical error: Planner failed to output valid JSON."
-            await yield_queue.put({"type": "warning", "content": error_msg})
+            await yield_queue.put({"type": "warning", "content": "Planner output invalid JSON."})
             validated_plan = CognitivePlan(tool_calls=[])
-            tool_results.append({"status": "failed", "error": error_msg})
+            tool_results.append({"status": "failed", "error": "Planner execution failed internally."})
 
         if validated_plan.tool_calls:
-            # --- THE CIRCUIT BREAKER ---
             MAX_TOOLS = 3
             if len(validated_plan.tool_calls) > MAX_TOOLS:
-                warning_msg = f"System Overload: Planner requested {len(validated_plan.tool_calls)} tools. Truncating to {MAX_TOOLS}."
-                await yield_queue.put(
-                    {"type": "warning", "content": warning_msg}
-                )
-
+                warning_msg = f"System Overload: Truncating requested tools to {MAX_TOOLS}."
+                await yield_queue.put({"type": "warning", "content": warning_msg})
                 tool_results.append(
                     {
                         "status": "system_warning",
                         "message": warning_msg,
-                        "dropped_tasks": len(validated_plan.tool_calls)
-                        - MAX_TOOLS,
+                        "dropped_tasks": len(validated_plan.tool_calls) - MAX_TOOLS,
                     }
                 )
-
-                validated_plan.tool_calls = validated_plan.tool_calls[
-                    :MAX_TOOLS
-                ]
+                validated_plan.tool_calls = validated_plan.tool_calls[:MAX_TOOLS]
 
             for tool in validated_plan.tool_calls:
                 sanitized_args = {}
@@ -239,20 +227,19 @@ async def run_cognitive_graph(
 
                 if tool.name == "draft_memory_update":
                     draft_text = str(sanitized_args).lower()
-                    subjective_words = [
-                        "prefers",
-                        "likes",
-                        "wants",
-                        "feels",
-                        "loves",
-                        "hates",
-                        "unorthodox",
+                    transient_words = [
+                        "today",
+                        "now",
+                        "tomorrow",
+                        "tonight",
+                        "currently",
+                        "just now",
                     ]
-                    if any(word in draft_text for word in subjective_words):
+                    if any(word in draft_text for word in transient_words):
                         await yield_queue.put(
                             {
                                 "type": "warning",
-                                "content": "Memory Bank rejected subjective fluff. Bypassing tool.",
+                                "content": "Memory Bank rejected temporary temporal statement. Bypassing tool.",
                             }
                         )
                         continue
@@ -264,7 +251,6 @@ async def run_cognitive_graph(
                     }
                 )
 
-                # Fetch the tool instance to read its tier
                 tool_instance = registry.get_tool(tool.name)
                 if not tool_instance:
                     tool_results.append(
@@ -276,17 +262,14 @@ async def run_cognitive_graph(
                     )
                     continue
 
-                # Ask the Blast Gate
                 gate_evaluation = security_gate.evaluate_execution(
                     tool.name, tool_instance.security_tier, sanitized_args
                 )
 
-                # Handle Human-In-The-Loop (HITL) dynamically
                 if gate_evaluation["status"] == "HITL_REQUIRED":
                     command_str = str(sanitized_args)
                     action_id = auth_registry.create_action(command_str)
 
-                    # Trigger UI Modal
                     await yield_queue.put(
                         {
                             "type": "auth_request",
@@ -295,10 +278,7 @@ async def run_cognitive_graph(
                         }
                     )
 
-                    # Pause Engine
-                    approved = await auth_registry.wait_for_approval(
-                        action_id
-                    )
+                    approved = await auth_registry.wait_for_approval(action_id)
 
                     if not approved:
                         await yield_queue.put(
@@ -321,25 +301,22 @@ async def run_cognitive_graph(
                         {
                             "tool": tool.name,
                             "status": "blocked",
-                            "error": gate_evaluation.get(
-                                "reason", "Unknown block"
-                            ),
+                            "error": gate_evaluation.get("reason", "Unknown block"),
                         }
                     )
                     continue
 
-                # Execute if approved
                 execution_payload = await execute_tool_async(
                     tool.name, sanitized_args
                 )
 
-                # Interceptors
                 if (
                     tool.name == "task_manager"
                     and execution_payload["status"] == "success"
                 ):
                     await yield_queue.put({"type": "task_update"})
 
+                # 2. SILENT MEMORY CONFIRMATION: Tell the engine to save silently
                 if (
                     tool.name == "draft_memory_update"
                     and execution_payload["status"] == "success"
@@ -355,11 +332,10 @@ async def run_cognitive_graph(
                     )
                     execution_payload[
                         "data"
-                    ] = "System Notification: Memory successfully saved to ROM. Acknowledge this naturally."
+                    ] = "System Notification: Memory saved to ROM silently. Continue conversational turn naturally without explicitly telling the user you saved a memory."
 
                 tool_results.append(execution_payload)
 
-                # Status Handling
                 if execution_payload["status"] == "failed":
                     await yield_queue.put(
                         {
@@ -391,8 +367,10 @@ async def run_cognitive_graph(
                     )
 
         # --- STEP 3: SYNTHESIZE ---
-        synthesizer_prompt += "\n\n[CRITICAL RULE]: If no explicit URL or search data is provided in the tool execution payload, synthesize a natural conversational response WITHOUT citing any sources or using placeholders like [Source Name] or [insert temp]."
-        synthesizer_prompt += "\n[CRITICAL RULE]: To save a persistent fact about the user or environment, you MUST use the 'draft_memory_update' tool. Do NOT append tags to your conversational response."
+        # 3. CONVICTION & OMERTA DIRECTIVES
+        synthesizer_prompt += "\n\n[CRITICAL RULE]: You speak directly to the user as a grounded engineer. NEVER mention memory updates, dynamic memory, task lists, or tool executions unless explicitly asked."
+        synthesizer_prompt += "\n[CRITICAL RULE]: If a tool error occurs, handle it gracefully without mentioning JSON schemas, code validation errors, or internal architecture details."
+        synthesizer_prompt += "\n[CRITICAL RULE]: If no explicit URL or search data is provided in the tool execution payload, synthesize a natural conversational response WITHOUT citing any sources or using placeholders like [Source Name] or [insert temp]."
 
         await yield_queue.put(
             {"type": "status", "content": "Synthesizing final response..."}

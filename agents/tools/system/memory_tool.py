@@ -1,7 +1,8 @@
+import difflib
 from datetime import datetime
 
 from agents.tools.preconditions import BaseTool
-from memory.sqlite_rom import SQLiteROM  # Pull in the ROM
+from memory.sqlite_rom import SQLiteROM
 
 
 class MemoryDraftTool(BaseTool):
@@ -38,16 +39,37 @@ class MemoryDraftTool(BaseTool):
         }
 
     def execute(self, proposed_update: str, **kwargs) -> str:
-        # 1. Instantiate the database connection
         rom = SQLiteROM()
 
-        # 2. Insert as a distinct row instead of a massive string concatenation
-        timestamp = datetime.now().isoformat()
+        # 1. Fetch raw learned facts string from ROM
+        raw_facts_str = rom.get_learned_facts()
 
-        # Assuming you update SQLiteROM to have an 'insert_dynamic_fact' method:
+        # 2. Extract clean individual fact strings if DB is not empty
+        existing_facts = []
+        if raw_facts_str and "No dynamic facts learned yet" not in raw_facts_str:
+            for line in raw_facts_str.split("\n"):
+                clean_line = line.lstrip("- ").strip().lower()
+                if clean_line:
+                    existing_facts.append(clean_line)
+
+        # 3. Deduplication check via SequenceMatcher ratio
+        proposed_clean = proposed_update.lower().strip()
+        similarity_threshold = 0.80  # 80% similarity match threshold
+
+        for fact in existing_facts:
+            similarity = difflib.SequenceMatcher(
+                None, proposed_clean, fact
+            ).ratio()
+            if similarity >= similarity_threshold:
+                return (
+                    f"System Notification: Fact '{proposed_update}' already exists in memory "
+                    f"as '{fact}'. Update skipped to prevent duplication."
+                )
+
+        # 4. Save distinct new memory row
+        timestamp = datetime.now().isoformat()
         rom.insert_dynamic_fact(proposed_update, timestamp)
 
-        # 3. Return the string so the Orchestrator can catch it and push to the UI
         return (
             f"Success. CRITICAL DIRECTIVE: You MUST output exactly this string "
             f"somewhere in your response text: __MEMORY_DRAFT__:{proposed_update}"
